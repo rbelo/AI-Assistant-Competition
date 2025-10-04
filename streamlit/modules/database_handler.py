@@ -6,10 +6,17 @@ from flask import Flask
 app = Flask(__name__)
 app.secret_key = 'key' 
 
-DB_CONNECTION_STRING = st.secrets["database"]
+# Helper to get the database connection string at runtime
+def get_db_connection_string():
+    try:
+        return st.secrets["database"]["url"]
+    except (KeyError, AttributeError) as e:
+        print(f"Error accessing database connection string: {str(e)}")
+        return None
 
 # Function to populate the 'plays' table with students who match the academic year and class of the created game
 def populate_plays_table(game_id, game_academic_year, game_class):
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -61,6 +68,7 @@ def populate_plays_table(game_id, game_academic_year, game_class):
 
 # Function to retrieve academic year and class combinations
 def get_academic_year_class_combinations():
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -94,6 +102,7 @@ def get_academic_year_class_combinations():
 
 # Function to get a game using the game_id
 def get_game_by_id(game_id):
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -101,7 +110,7 @@ def get_game_by_id(game_id):
                 query = """
                     SELECT available, created_by, game_name, number_of_rounds, 
                            name_roles, game_academic_year, game_class, password, timestamp_game_creation, 
-                           timestamp_submission_deadline 
+                           timestamp_submission_deadline, explanation
                     FROM game
                     WHERE game_id = %s;
                 """
@@ -121,7 +130,8 @@ def get_game_by_id(game_id):
                         "game_class": result[6],
                         "password": result[7],
                         "timestamp_game_creation": result[8],
-                        "timestamp_submission_deadline": result[9]
+                        "timestamp_submission_deadline": result[9],
+                        "explanation": result[10]
                     }
                 return False
             
@@ -130,6 +140,7 @@ def get_game_by_id(game_id):
 
 # Function to get all unique academic years or games linked with a specific academic year
 def fetch_games_data(academic_year=None, get_academic_years=False):
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -145,7 +156,7 @@ def fetch_games_data(academic_year=None, get_academic_years=False):
                 # Query to fetch games for a specific academic year
                 query2 = """
                     SELECT game_id, game_name, game_class, available, created_by, number_of_rounds, 
-                           name_roles, game_academic_year, password, timestamp_game_creation, timestamp_submission_deadline
+                           name_roles, game_academic_year, password, timestamp_game_creation, timestamp_submission_deadline, explanation
                     FROM game
                     WHERE game_academic_year = %(param1)s
                     ORDER BY game_id DESC;
@@ -167,7 +178,8 @@ def fetch_games_data(academic_year=None, get_academic_years=False):
                         "game_academic_year": row[7],
                         "password": row[8],
                         "timestamp_game_creation": row[9],
-                        "timestamp_submission_deadline": row[10]
+                        "timestamp_submission_deadline": row[10],
+                        "explanation": row[11] if len(row) > 11 else None
                     }
                     for row in games_data
                 ]
@@ -177,6 +189,7 @@ def fetch_games_data(academic_year=None, get_academic_years=False):
     
 # Function to fetch current (or past) games data by user_id
 def fetch_current_games_data_by_user_id(sign, user_id):
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -206,7 +219,8 @@ def fetch_current_games_data_by_user_id(sign, user_id):
                             "game_class": row[7],
                             "password": row[8],
                             "timestamp_game_creation": row[9],
-                            "timestamp_submission_deadline": row[10]
+                            "timestamp_submission_deadline": row[10],
+                            "explanation": row[11] if len(row) > 11 else None
                         }
                         games.append(game)
             
@@ -218,6 +232,7 @@ def fetch_current_games_data_by_user_id(sign, user_id):
     
 # Function to retrieve the last gameID from the database and increment it
 def get_next_game_id():
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -234,7 +249,8 @@ def get_next_game_id():
         return False
     
 # Function to update game details in the database
-def update_game_in_db(game_id, created_by, game_name, number_of_rounds, name_roles, game_academic_year, game_class, password, timestamp_game_creation, submission_deadline):
+def update_game_in_db(game_id, created_by, game_name, number_of_rounds, name_roles, game_academic_year, game_class, password, timestamp_game_creation, submission_deadline, explanation):
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -243,8 +259,8 @@ def update_game_in_db(game_id, created_by, game_name, number_of_rounds, name_rol
                     UPDATE game
                     SET created_by = %(param1)s, game_name = %(param2)s, number_of_rounds = %(param3)s, name_roles = %(param4)s,
                         game_academic_year = %(param5)s, game_class = %(param6)s, password = %(param7)s, timestamp_game_creation = %(param8)s, 
-                        timestamp_submission_deadline = %(param9)s
-                    WHERE game_id = %(param10)s;
+                        timestamp_submission_deadline = %(param9)s, explanation = %(param10)s
+                    WHERE game_id = %(param11)s;
                 """
 
                 cur.execute(query1, {
@@ -257,7 +273,8 @@ def update_game_in_db(game_id, created_by, game_name, number_of_rounds, name_rol
                     'param7': password, 
                     'param8': timestamp_game_creation,
                     'param9': submission_deadline,
-                    'param10': game_id
+                    'param10': explanation,
+                    'param11': game_id
                 })
 
                 query2 = """
@@ -275,6 +292,7 @@ def update_game_in_db(game_id, created_by, game_name, number_of_rounds, name_rol
     
 # Function to update access of negotiation chats to students 
 def update_access_to_chats(access, game_id):
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -304,14 +322,40 @@ def update_access_to_chats(access, game_id):
         return False
 
 # Function to store game details in the database
-def store_game_in_db(game_id, available, created_by, game_name, number_of_rounds, name_roles, game_academic_year, game_class, password, timestamp_game_creation, submission_deadline):
+def store_game_in_db(game_id, available, created_by, game_name, number_of_rounds, name_roles, game_academic_year, game_class, password, timestamp_game_creation, submission_deadline, explanation, game_type="zero_sum"):
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
+                # First, get the mode_id for the game type
+                query_mode = """
+                    SELECT mode_id FROM game_modes WHERE mode_name = %(mode)s;
+                """
+                cur.execute(query_mode, {'mode': game_type})
+                mode_result = cur.fetchone()
+                
+                if not mode_result:
+                    # If mode doesn't exist, create it
+                    query_insert_mode = """
+                        INSERT INTO game_modes (mode_name, description)
+                        VALUES (%(mode)s, %(desc)s)
+                        RETURNING mode_id;
+                    """
+                    cur.execute(query_insert_mode, {
+                        'mode': game_type,
+                        'desc': f'Configuration for {game_type} games'
+                    })
+                    mode_id = cur.fetchone()[0]
+                else:
+                    mode_id = mode_result[0]
 
+                # Now insert the game with the mode_id
                 query = """
-                    INSERT INTO game (game_id, available, created_by, game_name, number_of_rounds, name_roles, game_academic_year, game_class, password, timestamp_game_creation, timestamp_submission_deadline)
-                    VALUES (%(param1)s, %(param2)s, %(param3)s, %(param4)s, %(param5)s, %(param6)s, %(param7)s, %(param8)s, %(param9)s, %(param10)s, %(param11)s);
+                    INSERT INTO game (game_id, available, created_by, game_name, number_of_rounds, name_roles, 
+                                    game_academic_year, game_class, password, timestamp_game_creation, 
+                                    timestamp_submission_deadline, explanation, mode_id)
+                    VALUES (%(param1)s, %(param2)s, %(param3)s, %(param4)s, %(param5)s, %(param6)s, 
+                            %(param7)s, %(param8)s, %(param9)s, %(param10)s, %(param11)s, %(param12)s, %(param13)s);
                 """
 
                 cur.execute(query, {
@@ -325,16 +369,20 @@ def store_game_in_db(game_id, available, created_by, game_name, number_of_rounds
                     'param8': game_class,
                     'param9': password, 
                     'param10': timestamp_game_creation,
-                    'param11': submission_deadline
+                    'param11': submission_deadline,
+                    'param12': explanation,
+                    'param13': mode_id
                 })
 
                 return True
             
-    except Exception:
+    except Exception as e:
+        print(f"Error in store_game_in_db: {str(e)}")
         return False
     
 # Function to get the group id of the user_id
 def get_group_id_from_user_id(user_id):
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -351,6 +399,7 @@ def get_group_id_from_user_id(user_id):
     
 # Function to get the academic_year of the user_id
 def get_academic_year_from_user_id(user_id):
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -367,6 +416,7 @@ def get_academic_year_from_user_id(user_id):
 
 # Function to get the class of the user_id
 def get_class_from_user_id(user_id):
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -383,6 +433,7 @@ def get_class_from_user_id(user_id):
 
 # Function to remove a student from the database
 def remove_student(user_id):
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -400,6 +451,7 @@ def remove_student(user_id):
 
 # Function to fetch student data from the database
 def get_students_from_db():
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -428,6 +480,7 @@ def get_students_from_db():
 
 # Function to insert email and into the user table
 def insert_student_data(user_id, email, temp_password, group_id, academic_year, class_):
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -466,6 +519,7 @@ def insert_student_data(user_id, email, temp_password, group_id, academic_year, 
 
 # Function to insert round data into the 'round' table
 def insert_round_data(game_id, round_number, group1_class, group1_id, group2_class, group2_id, score_team1_role1, score_team2_role2, score_team1_role2, score_team2_role1):
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -495,6 +549,7 @@ def insert_round_data(game_id, round_number, group1_class, group1_id, group2_cla
 
 # Function to get the round information of a specific game from a specific game
 def get_round_data(game_id):
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -515,6 +570,7 @@ def get_round_data(game_id):
 
 # Function to get the round information of a specific group from a specific game
 def get_round_data_by_class_group_id(game_id, class_, group_id):
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -537,6 +593,7 @@ def get_round_data_by_class_group_id(game_id, class_, group_id):
 
 # Function to get the ids of the groups that played a specific game
 def get_group_ids_from_game_id(game_id): 
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -552,33 +609,37 @@ def get_group_ids_from_game_id(game_id):
                 group_ids = cur.fetchall()
                 return group_ids
 
-    except Exception:
+    except Exception as e:
+        print(f"Error in get_group_ids_from_game_id: {e}")
         return False
 
 # Function to check user credentials
 def authenticate_user(email, password_hash):
+    DB_CONNECTION_STRING = get_db_connection_string()
     print(f"Authenticating user with email: {email} and password hash: {password_hash}")
     print(f"DB_CONNECTION_STRING: {DB_CONNECTION_STRING}")
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             print("Connected to the database")
             with conn.cursor() as cur:
-
                 query = "SELECT 1 FROM user_ WHERE email = %(param1)s AND password = %(param2)s;"
-
                 print(f"Executing query: {query} with params: {email}, {password_hash}")
-                cur.execute(query, {'param1': email, 'param2':password_hash})
+                cur.execute(query, {'param1': email, 'param2': password_hash})
                 print("Query executed successfully")
-                # Fetch the result
-                exists = cur.fetchone()[0]
-                
+                result = cur.fetchone()
+                if result is None:
+                    print("No matching user found")
+                    return False
+                exists = result[0]
+                print(f"Authentication result: {exists}")
                 return exists
-
-    except Exception:
+    except Exception as e:
+        print(f"Authentication error: {str(e)}")
         return False
 
 # Function to validate if an email belongs to a professor
 def is_valid_professor_email(email):
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -597,6 +658,7 @@ def is_valid_professor_email(email):
 
 # Function to validate if the user that logged in is a Professor
 def is_professor(email):
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -621,6 +683,7 @@ def is_professor(email):
 
 # Function to see if exists the user
 def exists_user(email):
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -644,6 +707,7 @@ def exists_user(email):
     
 # Function to update the user's password
 def update_password(email, new_password):
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -662,6 +726,7 @@ def update_password(email, new_password):
     
 # Function to get user_id by email
 def get_user_id_by_email(email):
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -680,6 +745,7 @@ def get_user_id_by_email(email):
         
 # Function to update the number of rounds of a game
 def update_num_rounds_game(num_rounds, game_id):
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -707,6 +773,7 @@ def update_num_rounds_game(num_rounds, game_id):
     
 # Function to extract from the 'round' table all the rows of a specific game where the chats were not successful 
 def get_error_matchups(game_id):
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -736,6 +803,7 @@ def get_error_matchups(game_id):
     
 # Function to update the scores of a specific row in the 'round' table
 def update_round_data(game_id, round_number, group1_class, group1_id, group2_class, group2_id, score_team1, score_team2, order):
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -787,6 +855,7 @@ def update_round_data(game_id, round_number, group1_class, group1_id, group2_cla
     
 # Function to delete all the rows in the 'round' table that belong to a specific game_id
 def delete_from_round(game_id):
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -806,6 +875,7 @@ def delete_from_round(game_id):
 # The next four functions enable the Professor to view the Play section exactly as it appears to a student in a specific group
 # Function to get all the different academic years of students
 def get_academic_years_of_students():
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -832,6 +902,7 @@ def get_academic_years_of_students():
     
 # Function to get all the different classes of students from a specfic academic year
 def get_classes_of_students(academic_year):
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -858,6 +929,7 @@ def get_classes_of_students(academic_year):
     
 # Function to get all the different groups of students from a specfic class of a specific academic year
 def get_groups_of_students(academic_year, class_):
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -884,6 +956,7 @@ def get_groups_of_students(academic_year, class_):
     
 # Function to get the user_id of a student from a specific group of a specific class of a specific academic year
 def get_user_id_of_student(academic_year, class_, group_id):
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -905,6 +978,7 @@ def get_user_id_of_student(academic_year, class_, group_id):
 
 # Function to get and compute leaderboard scores for a given academic year
 def fetch_and_compute_scores_for_year(selected_year, student = False):
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -1004,6 +1078,7 @@ def fetch_and_compute_scores_for_year(selected_year, student = False):
     
 # Function to get and compute leaderboard scores for a given game_id
 def fetch_and_compute_scores_for_year_game(game_id):
+    DB_CONNECTION_STRING = get_db_connection_string()
     try:
         with psycopg2.connect(DB_CONNECTION_STRING) as conn:
             with conn.cursor() as cur:
@@ -1098,3 +1173,184 @@ def fetch_and_compute_scores_for_year_game(game_id):
 
     except Exception:
         return False
+
+# Function to store group values in the database
+def store_group_values(game_id, class_, group_id, minimizer_value, maximizer_value):
+    DB_CONNECTION_STRING = get_db_connection_string()
+    try:
+        with psycopg2.connect(DB_CONNECTION_STRING) as conn:
+            with conn.cursor() as cur:
+                # First check if the table exists, if not create it
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS group_values (
+                        game_id INT NOT NULL,
+                        class VARCHAR(10) NOT NULL,
+                        group_id INT NOT NULL,
+                        minimizer_value FLOAT NOT NULL,
+                        maximizer_value FLOAT NOT NULL,
+                        PRIMARY KEY (game_id, class, group_id),
+                        FOREIGN KEY (game_id) REFERENCES game(game_id) ON DELETE CASCADE
+                    );
+                """)
+                
+                # This query inserts a new row. 
+                # If a row with the same game_id, class, and group_id already exists (ON CONFLICT),
+                # it updates the existing row instead (DO UPDATE SET).
+                query = """
+                    INSERT INTO group_values (game_id, class, group_id, minimizer_value, maximizer_value)
+                    VALUES (%(param1)s, %(param2)s, %(param3)s, %(param4)s, %(param5)s)
+                    ON CONFLICT (game_id, class, group_id) 
+                    DO UPDATE SET minimizer_value = %(param4)s, maximizer_value = %(param5)s;
+                """
+                
+                cur.execute(query, {
+                    'param1': game_id,
+                    'param2': class_,
+                    'param3': group_id,
+                    'param4': minimizer_value,
+                    'param5': maximizer_value
+                })
+                
+                return True
+    except Exception as e:
+        print(f"Error in store_group_values: {e}")
+        return False
+
+# Function to store game parameters (bounds)
+def store_game_parameters(game_id, min_minimizer, max_minimizer, min_maximizer, max_maximizer):
+    DB_CONNECTION_STRING = get_db_connection_string()
+    try:
+        with psycopg2.connect(DB_CONNECTION_STRING) as conn:
+            with conn.cursor() as cur:
+                # First check if the table exists, if not create it
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS group_values (
+                        game_id INT NOT NULL,
+                        class VARCHAR(10) NOT NULL,
+                        group_id INT NOT NULL,
+                        minimizer_value FLOAT NOT NULL,
+                        maximizer_value FLOAT NOT NULL,
+                        PRIMARY KEY (game_id, class, group_id),
+                        FOREIGN KEY (game_id) REFERENCES game(game_id) ON DELETE CASCADE
+                    );
+                """)
+                
+                # Store min values in one row using 'params' as class and 0 as group_id
+                query = """
+                    INSERT INTO group_values (game_id, class, group_id, minimizer_value, maximizer_value)
+                    VALUES (%(param1)s, 'params', 0, %(param2)s, %(param3)s)
+                    ON CONFLICT (game_id, class, group_id) 
+                    DO UPDATE SET minimizer_value = %(param2)s, maximizer_value = %(param3)s;
+                """
+                
+                cur.execute(query, {
+                    'param1': game_id,
+                    'param2': min_minimizer,
+                    'param3': min_maximizer
+                })
+                
+                # Store max values in another row using 'params' as class and 1 as group_id
+                query = """
+                    INSERT INTO group_values (game_id, class, group_id, minimizer_value, maximizer_value)
+                    VALUES (%(param1)s, 'params', 1, %(param2)s, %(param3)s)
+                    ON CONFLICT (game_id, class, group_id) 
+                    DO UPDATE SET minimizer_value = %(param2)s, maximizer_value = %(param3)s;
+                """
+                
+                cur.execute(query, {
+                    'param1': game_id,
+                    'param2': max_minimizer,
+                    'param3': max_maximizer
+                })
+                
+                return True
+    except Exception as e:
+        print(f"Error in store_game_parameters: {e}")
+        return False
+
+# Function to get group values from database
+def get_group_values(game_id, class_, group_id):
+    DB_CONNECTION_STRING = get_db_connection_string()
+    try:
+        with psycopg2.connect(DB_CONNECTION_STRING) as conn:
+            with conn.cursor() as cur:
+                query = """
+                    SELECT minimizer_value, maximizer_value
+                    FROM group_values
+                    WHERE game_id = %(param1)s AND class = %(param2)s AND group_id = %(param3)s;
+                """
+                
+                cur.execute(query, {
+                    'param1': game_id,
+                    'param2': class_,
+                    'param3': group_id
+                })
+                
+                result = cur.fetchone()
+                if result:
+                    return {
+                        "minimizer_value": result[0],
+                        "maximizer_value": result[1]
+                    }
+                return None
+    except Exception:
+        return None
+
+# Function to get game parameters (bounds)
+def get_game_parameters(game_id):
+    DB_CONNECTION_STRING = get_db_connection_string()
+    try:
+        with psycopg2.connect(DB_CONNECTION_STRING) as conn:
+            with conn.cursor() as cur:
+                # Retrieve the two rows stored for parameters, ordered by group_id (0 then 1)
+                query = """
+                    SELECT minimizer_value, maximizer_value
+                    FROM group_values
+                    WHERE game_id = %(param1)s AND class = 'params'
+                    ORDER BY group_id;
+                """
+                
+                cur.execute(query, {'param1': game_id})
+                
+                results = cur.fetchall()
+                # Expecting two rows: one for min values (group_id=0), one for max values (group_id=1)
+                if len(results) == 2:
+                    return {
+                        "min_minimizer": results[0][0], # Min minimizer from row 0
+                        "max_minimizer": results[1][0], # Max minimizer from row 1
+                        "min_maximizer": results[0][1], # Min maximizer from row 0
+                        "max_maximizer": results[1][1]  # Max maximizer from row 1
+                    }
+                return None
+    except Exception as e:
+        print(f"Error in get_game_parameters: {e}")
+        return None
+
+# Function to get all group values for a game (excluding parameters)
+def get_all_group_values(game_id):
+    DB_CONNECTION_STRING = get_db_connection_string()
+    try:
+        with psycopg2.connect(DB_CONNECTION_STRING) as conn:
+            with conn.cursor() as cur:
+                query = """
+                    SELECT class, group_id, minimizer_value, maximizer_value
+                    FROM group_values
+                    WHERE game_id = %(param1)s AND class != 'params'
+                    ORDER BY class, group_id;
+                """
+                
+                cur.execute(query, {'param1': game_id})
+                
+                results = cur.fetchall()
+                values = []
+                for row in results:
+                    values.append({
+                        "class": row[0],
+                        "group_id": row[1],
+                        "minimizer_value": row[2],
+                        "maximizer_value": row[3]
+                    })
+                return values
+    except Exception as e:
+        print(f"Error in get_all_group_values: {e}")
+        return []

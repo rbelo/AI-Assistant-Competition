@@ -5,10 +5,92 @@ from datetime import datetime, timedelta
 import random
 import re
 from st_aggrid import GridOptionsBuilder, AgGrid, GridUpdateMode, ColumnsAutoSizeMode
-from modules.database_handler import populate_plays_table, insert_student_data, remove_student, store_game_in_db, update_game_in_db, update_num_rounds_game, update_access_to_chats, delete_from_round
+from modules.database_handler import populate_plays_table, insert_student_data, remove_student, store_game_in_db, update_game_in_db, update_num_rounds_game, update_access_to_chats, delete_from_round, store_group_values, store_game_parameters, get_game_parameters
 from modules.database_handler import get_academic_year_class_combinations, get_game_by_id, fetch_games_data, get_next_game_id, get_students_from_db, get_group_ids_from_game_id, get_round_data, get_error_matchups, fetch_and_compute_scores_for_year, fetch_and_compute_scores_for_year_game
+from modules.database_handler import get_all_group_values
 from modules.drive_file_manager import overwrite_text_file, get_text_from_file, upload_text_as_file, get_text_from_file_without_timestamp, find_and_delete 
 from modules.negotiations import create_chats, create_all_error_chats
+from modules.metrics_handler import record_page_entry, record_page_exit
+import psycopg2
+
+def create_metrics_tables():
+    """Create the necessary tables for metrics tracking if they don't exist."""
+    try:
+        conn = psycopg2.connect(st.secrets["database"]["url"])
+        cur = conn.cursor()
+        
+        # Create page_visit table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS page_visit (
+                id SERIAL PRIMARY KEY,
+                user_id VARCHAR(255),
+                page_name VARCHAR(255),
+                entry_timestamp TIMESTAMP,
+                exit_timestamp TIMESTAMP,
+                duration_seconds FLOAT
+            );
+        """)
+        
+        # Create game_interaction table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS game_interaction (
+                id SERIAL PRIMARY KEY,
+                user_id VARCHAR(255),
+                game_id INTEGER,
+                game_type VARCHAR(50),
+                completion_time FLOAT,
+                score FLOAT,
+                timestamp TIMESTAMP
+            );
+        """)
+        
+        # Create prompt_metrics table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS prompt_metrics (
+                id SERIAL PRIMARY KEY,
+                user_id VARCHAR(255),
+                prompt_text TEXT,
+                word_count INTEGER,
+                character_count INTEGER,
+                response_time FLOAT,
+                timestamp TIMESTAMP
+            );
+        """)
+        
+        # Create conversation_metrics table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS conversation_metrics (
+                id SERIAL PRIMARY KEY,
+                user_id VARCHAR(255),
+                conversation_id VARCHAR(255),
+                total_exchanges INTEGER,
+                conversation_duration FLOAT,
+                timestamp TIMESTAMP
+            );
+        """)
+        
+        # Create deal_metrics table
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS deal_metrics (
+                id SERIAL PRIMARY KEY,
+                user_id VARCHAR(255),
+                game_id INTEGER,
+                negotiation_rounds INTEGER,
+                deal_value FLOAT,
+                deal_success BOOLEAN,
+                timestamp TIMESTAMP
+            );
+        """)
+        
+        conn.commit()
+        return True
+        
+    except Exception as e:
+        st.error(f"Error creating metrics tables: {e}")
+        return False
+    finally:
+        if 'cur' in locals(): cur.close()
+        if 'conn' in locals(): conn.close()
 
 # ---------------------------- SET THE DEFAULT SESSION STATE FOR ALL CASES ------------------------------- #
 
@@ -54,6 +136,10 @@ def get_text_from_file_without_timestamp_aux(name):
     text = get_text_from_file_without_timestamp(name)
     return text
 
+# Record page entry
+if 'authenticated' in st.session_state and st.session_state['authenticated']:
+    record_page_entry(st.session_state.get('user_id', 'anonymous'), 'Control Panel')
+
 # Check if the user is authenticated
 if st.session_state['authenticated']:
 
@@ -93,7 +179,7 @@ if st.session_state['authenticated']:
             # Action selection dropdown
             c1, _ = st.columns([3, 2])
             selected_option = c1.selectbox("Please select what you would like to do:", ["Student Management", "Create Game", "Available Games",
-                                                                                        "Run Simulation" , "Game Data", "Leaderboard"])
+                                                                                        "Run Simulation" , "Game Data", "Leaderboard", "Metrics Dashboard"])
 
             if st.button("Select"):
                 st.session_state.action = selected_option  # Update session state only when the button is clicked
@@ -278,6 +364,10 @@ if st.session_state['authenticated']:
                 case "Create Game":  # Allow professor to create a game
                     # Get academic year and class combinations
                     academic_year_class_combinations = get_academic_year_class_combinations()
+                    
+                    if not academic_year_class_combinations:
+                        st.error("No academic year and class combinations found. Please make sure there are students in the database.")
+                        st.stop()
 
                     # Create options list with both years and year-class combinations
                     combination_options = []
@@ -290,6 +380,14 @@ if st.session_state['authenticated']:
                         # Game details
                         game_name = st.text_input("Game Name", max_chars=100, key="game_name")
                         game_explanation = st.text_area("Game Explanation", key="explanation")
+                        
+                        # Game type selection
+                        game_type = st.selectbox(
+                            "Game Type",
+                            options=["zero_sum", "prisoners_dilemma"],
+                            format_func=lambda x: "Zero Sum" if x == "zero_sum" else "Prisoner's Dilemma",
+                            help="Select the type of game to create. Zero-sum games are negotiation games where one player's gain is another's loss. Prisoner's dilemma games involve strategic decision making with cooperation and defection options."
+                        )
                 
                         col1, col2 = st.columns(2)
                         with col1: name_roles_1 = st.text_input("Name of Minimizer Role", value = 'Buyer')
@@ -355,22 +453,34 @@ if st.session_state['authenticated']:
 
                                 # Store other details in the database
                                 store_game_in_db(next_game_id, 0, user_id, game_name, -1, name_roles, game_academic_year,
-                                                   game_class, password, timestamp_game_creation, submission_deadline)
-                                
+                                                   game_class, password, timestamp_game_creation, submission_deadline, game_explanation, game_type)
+
                                 # Populate the 'plays' table with eligible students
                                 if not populate_plays_table(next_game_id, game_academic_year, game_class):
-                                    error = st.error("An error occurred while assigning students to the game.")
-                                    time.sleep(1)
-                                    error.empty()
-                                
+                                    st.error("An error occurred while assigning students to the game.")
+                                    st.stop()
+
+                                # Now that students are in the plays table, we can get their group IDs
                                 different_groups_classes = get_group_ids_from_game_id(next_game_id)
-                                text = f'{param1},{param2},{param3},{param4}\n'
+                                if different_groups_classes is False:
+                                    st.error("An error occurred while retrieving group information.")
+                                    st.stop()
+                                elif not different_groups_classes:
+                                    st.error("No eligible students found for this game.")
+                                    st.stop()
+
+                                # Store parameters (min/max bounds)
+                                if not store_game_parameters(next_game_id, param1, param2, param3, param4):
+                                    st.error("Failed to store game parameters.")
+                                    st.stop()
+
+                                # Generate and store values for each group
                                 for i in different_groups_classes:
                                     buy_value = int(random.uniform(param1, param2))
                                     sell_value = int(random.uniform(param3, param4))
-                                    text += f'{i[0]},{i[1]},{buy_value},{sell_value}\n'
-
-                                upload_text_as_file(text, f"Values_{user_id}_{next_game_id}_{timestamp_game_creation}")
+                                    if not store_group_values(next_game_id, i[0], i[1], buy_value, sell_value):
+                                        st.error(f"Failed to store values for group {i[0]}-{i[1]}.")
+                                        st.stop()
 
                                 success = st.success("Game created successfully!")
                                 time.sleep(1)
@@ -427,12 +537,19 @@ if st.session_state['authenticated']:
                             if radio == 'Details':
 
                                 if selected_game:
-
-                                    values = get_text_from_file_without_timestamp_aux(f"Values_{selected_game['created_by']}_{selected_game['game_id']}_")
-                                    if values: 
-                                        values = values.split('\n')
-                                        values = [item.split(',') for item in values if item]
-                                        params = list(map(int, values[0]))
+                                    # Get parameters from the database instead of the file
+                                    params_data = get_game_parameters(selected_game['game_id'])
+                                    if params_data:
+                                        # Reconstruct the params list in the same order as before
+                                        params = [
+                                            params_data["min_minimizer"],
+                                            params_data["max_minimizer"],
+                                            params_data["min_maximizer"],
+                                            params_data["max_maximizer"]
+                                        ]
+                                    else:
+                                        params = [0, 0, 0, 0] # Default if not found
+                                        st.warning("Game parameters not found.")
 
                                     st.subheader(f"Details of {selected_game['game_name']}")
                                     st.write(f"**Game ID**: {selected_game['game_id']}")
@@ -459,10 +576,9 @@ if st.session_state['authenticated']:
                                     # Retrieve user ID from session state
                                     user_id = st.session_state.get('user_id')
 
-                                    # Get the Game explanation from Google Drive using the filename
-                                    game_explanation = get_text_from_file_without_timestamp_aux(f"Explanation_{selected_game['created_by']}_{selected_game['game_id']}_")
-                                    if game_explanation:
-                                        st.write(f"**Game Explanation**: {game_explanation}")
+                                    # Get the game explanation from the database
+                                    if "explanation" in selected_game and selected_game["explanation"]:
+                                        st.write(f"**Game Explanation**: {selected_game['explanation']}")
                                     else:
                                         st.write("No explanation found for this game.")
                                     
@@ -513,14 +629,23 @@ if st.session_state['authenticated']:
                             deadline_date_stored = game_details["timestamp_submission_deadline"].date()
                             deadline_time_stored = game_details["timestamp_submission_deadline"].time()
 
-                            values_stored = get_text_from_file_without_timestamp(f'Values_{created_by_stored}_{game_id}_')
-                            if values_stored: 
-                                values_stored = values_stored.split('\n')
-                                values_stored = [item.split(',') for item in values_stored if item]
-                                params_stored = list(map(int, values_stored[0]))
+                            # Get parameters from the database instead of the file
+                            params_data = get_game_parameters(game_id)
+                            if params_data:
+                                # Reconstruct the params list in the same order as before
+                                params_stored = [
+                                    params_data["min_minimizer"],
+                                    params_data["max_minimizer"],
+                                    params_data["min_maximizer"],
+                                    params_data["max_maximizer"]
+                                ]
+                            else:
+                                params_stored = [0, 0, 0, 0] # Default if not found
+                                st.warning("Game parameters not found.")
 
-                            # Fetch Game explanation from Google Drive
-                            game_explanation_stored = get_text_from_file_without_timestamp(f"Explanation_{created_by_stored}_{game_id}_")
+                            # Get explanation from game_details (already fetched from database)
+                            game_explanation_stored = game_details.get("explanation", "")
+                        
                         else:
                             st.error("Game not found.")
 
@@ -586,9 +711,8 @@ if st.session_state['authenticated']:
                             if  game_name_edit and game_explanation_edit and name_roles_1_edit and name_roles_2_edit and \
                                 selected_combination_edit and password_edit and deadline_date_edit and deadline_time_edit:
                                 try:
-                                    # Overwrite file in Google Drive
-                                    overwrite_text_file(game_explanation_edit, f"Explanation_{created_by_stored}_{game_id}_{timestamp_game_creation_stored}")
- 
+                                    # No need to update in Google Drive, it will be updated in the database
+
                                     # Combine the date and time into a single datetime object
                                     submission_deadline = datetime.combine(deadline_date_edit, deadline_time_edit)
  
@@ -597,33 +721,33 @@ if st.session_state['authenticated']:
 
                                     # Update other details in the database
                                     update_game_in_db(game_id, created_by_stored, game_name_edit, -1, name_roles_edit, game_academic_year_edit,
-                                                        game_class_edit, password_edit, timestamp_game_creation_stored, submission_deadline)
+                                                        game_class_edit, password_edit, timestamp_game_creation_stored, submission_deadline, game_explanation_edit)
                                     
                                     # Populate the 'plays' table with eligible students (after update)
                                     if not populate_plays_table(game_id, game_academic_year_edit, game_class_edit):
                                         st.error("An error occurred while assigning students to the game.")
 
-                                    # Handling Values.txt
+                                    # Handling Group Values in Database
                                     different_groups_classes = get_group_ids_from_game_id(game_id)
-                                    if game_class_stored == game_class_edit and str(game_academic_year_stored) == game_academic_year_edit:
-                                        if params_stored[0]==param1_edit and params_stored[1]==param2_edit and params_stored[2]==param3_edit and params_stored[3]==param4_edit:
-                                            pass
-                                        else:
-                                            text = f'{param1_edit},{param2_edit},{param3_edit},{param4_edit}\n'
+                                    # Always update parameters first
+                                    if not store_game_parameters(game_id, param1_edit, param2_edit, param3_edit, param4_edit):
+                                        st.error("Failed to update game parameters.")
+                                        # Handle error appropriately
+
+                                    # Check if class/year or parameters changed, regenerate values if necessary
+                                    if (game_class_stored != game_class_edit or 
+                                        str(game_academic_year_stored) != game_academic_year_edit or
+                                        params_stored[0] != param1_edit or params_stored[1] != param2_edit or 
+                                        params_stored[2] != param3_edit or params_stored[3] != param4_edit):
+                                        
+                                        if different_groups_classes: # Check if list is not empty
                                             for i in different_groups_classes:
                                                 buy_value = int(random.uniform(param1_edit, param2_edit))
                                                 sell_value = int(random.uniform(param3_edit, param4_edit))
-                                                text += f'{i[0]},{i[1]},{buy_value},{sell_value}\n'
-                                            overwrite_text_file(text, f'Values_{created_by_stored}_{game_id}_{timestamp_game_creation_stored}')
-                                            
-                                    else: 
-                                        text = f'{param1_edit},{param2_edit},{param3_edit},{param4_edit}\n'
-                                        for i in different_groups_classes:
-                                            buy_value = int(random.uniform(param1_edit, param2_edit))
-                                            sell_value = int(random.uniform(param3_edit, param4_edit))
-                                            text += f'{i[0]},{i[1]},{buy_value},{sell_value}\n'
-                                        overwrite_text_file(text, f'Values_{created_by_stored}_{game_id}_{timestamp_game_creation_stored}')
-
+                                                if not store_group_values(game_id, i[0], i[1], buy_value, sell_value):
+                                                     st.error(f"Failed to update values for group {i[0]}-{i[1]}.")
+                                                     # Handle error appropriately
+                                    
                                     st.success("Game changed successfully!")
                                     
                                 except Exception:
@@ -733,6 +857,12 @@ if st.session_state['authenticated']:
                                         update_num_rounds_game(num_rounds, game_id)  
 
                                         config_list = {"config_list" : [{"model": model, "api_key": api_key}], "temperature": 0.3, "top_p": 0.5}
+                                        
+                                        # Get group values from database
+                                        values = get_all_group_values(game_id)
+                                        if not values:
+                                            st.error("Failed to retrieve group values from database.")
+                                            st.stop()
                                         
                                         outcome_simulation = create_chats(game_id, config_list, name_roles, order, teams, values, num_rounds, starting_message, num_turns, negotiation_termination_message, summary_prompt, summary_termination_message)
                                         if outcome_simulation == "All negotiations were completed successfully!":
@@ -845,10 +975,9 @@ if st.session_state['authenticated']:
                         st.header(f"{selected_game_name}")
 
                         with st.expander("**Explanation**"):
-                            # Get the Game explanation from Google Drive using the filename
-                            game_explanation = get_text_from_file_without_timestamp_aux(f'Explanation_{professor_id}_{game_id}_')
-                            if game_explanation:
-                                st.write(f"{game_explanation}")
+                            # Get the game explanation from the database
+                            if "explanation" in selected_game and selected_game["explanation"]:
+                                st.write(f"{selected_game['explanation']}")
                             else:
                                 st.write("No explanation found for this game.")
 
@@ -1057,9 +1186,210 @@ if st.session_state['authenticated']:
                         else:
                             st.write("There are no available games for the selected academic year.")
                     
+                case "Metrics Dashboard":
+                    st.write("View detailed metrics about user interactions and game performance.")
+                    
+                    # Create metrics tables if they don't exist
+                    if create_metrics_tables():
+                        st.success("Metrics tables created successfully!")
+                    
+                    # Create tabs for different metric categories
+                    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+                        "Page Visits", "Game Interactions", "Prompt Analytics", 
+                        "Conversation Stats", "Deal Analysis"
+                    ])
+                    
+                    with tab1:
+                        st.subheader("Page Visit Metrics")
+                        try:
+                            conn = psycopg2.connect(st.secrets["database"]["url"])
+                            cur = conn.cursor()
+                            
+                            # Get page visit data
+                            cur.execute("""
+                                SELECT 
+                                    page_name,
+                                    COUNT(*) as total_visits,
+                                    AVG(duration_seconds) as avg_duration,
+                                    MAX(duration_seconds) as max_duration,
+                                    MIN(duration_seconds) as min_duration
+                                FROM page_visit
+                                WHERE exit_timestamp IS NOT NULL
+                                GROUP BY page_name
+                                ORDER BY total_visits DESC;
+                            """)
+                            
+                            page_visits = pd.DataFrame(cur.fetchall(), 
+                                columns=["Page", "Total Visits", "Avg Duration (s)", "Max Duration (s)", "Min Duration (s)"])
+                            
+                            if not page_visits.empty:
+                                st.dataframe(page_visits.style.format({
+                                    "Avg Duration (s)": "{:.1f}",
+                                    "Max Duration (s)": "{:.1f}",
+                                    "Min Duration (s)": "{:.1f}"
+                                }))
+                            else:
+                                st.write("No page visit data available.")
+                                
+                        except Exception as e:
+                            st.error(f"Error fetching page visit data: {e}")
+                        finally:
+                            if 'cur' in locals(): cur.close()
+                            if 'conn' in locals(): conn.close()
+                    
+                    with tab2:
+                        st.subheader("Game Interaction Metrics")
+                        try:
+                            conn = psycopg2.connect(st.secrets["database"]["url"])
+                            cur = conn.cursor()
+                            
+                            # Get game interaction data
+                            cur.execute("""
+                                SELECT 
+                                    game_type,
+                                    COUNT(*) as total_games,
+                                    AVG(completion_time) as avg_completion_time,
+                                    AVG(score) as avg_score,
+                                    MAX(score) as max_score,
+                                    MIN(score) as min_score
+                                FROM game_interaction
+                                GROUP BY game_type
+                                ORDER BY total_games DESC;
+                            """)
+                            
+                            game_metrics = pd.DataFrame(cur.fetchall(), 
+                                columns=["Game Type", "Total Games", "Avg Completion Time (s)", 
+                                        "Avg Score", "Max Score", "Min Score"])
+                            
+                            if not game_metrics.empty:
+                                st.dataframe(game_metrics.style.format({
+                                    "Avg Completion Time (s)": "{:.1f}",
+                                    "Avg Score": "{:.1f}",
+                                    "Max Score": "{:.1f}",
+                                    "Min Score": "{:.1f}"
+                                }))
+                            else:
+                                st.write("No game interaction data available.")
+                                
+                        except Exception as e:
+                            st.error(f"Error fetching game interaction data: {e}")
+                        finally:
+                            if 'cur' in locals(): cur.close()
+                            if 'conn' in locals(): conn.close()
+                    
+                    with tab3:
+                        st.subheader("Prompt Analytics")
+                        try:
+                            conn = psycopg2.connect(st.secrets["database"]["url"])
+                            cur = conn.cursor()
+                            
+                            # Get prompt metrics
+                            cur.execute("""
+                                SELECT 
+                                    AVG(word_count) as avg_words,
+                                    AVG(character_count) as avg_chars,
+                                    AVG(response_time) as avg_response_time,
+                                    COUNT(*) as total_prompts
+                                FROM prompt_metrics;
+                            """)
+                            
+                            prompt_stats = pd.DataFrame(cur.fetchall(), 
+                                columns=["Avg Words", "Avg Characters", "Avg Response Time (s)", "Total Prompts"])
+                            
+                            if not prompt_stats.empty and prompt_stats["Total Prompts"].iloc[0] > 0:
+                                # Format only if we have data
+                                formatted_stats = prompt_stats.copy()
+                                formatted_stats["Avg Words"] = formatted_stats["Avg Words"].round(1)
+                                formatted_stats["Avg Characters"] = formatted_stats["Avg Characters"].round(1)
+                                formatted_stats["Avg Response Time (s)"] = formatted_stats["Avg Response Time (s)"].round(1)
+                                st.dataframe(formatted_stats)
+                            else:
+                                st.write("No prompt metrics available.")
+                                
+                        except Exception as e:
+                            st.error(f"Error fetching prompt metrics: {e}")
+                        finally:
+                            if 'cur' in locals(): cur.close()
+                            if 'conn' in locals(): conn.close()
+                    
+                    with tab4:
+                        st.subheader("Conversation Statistics")
+                        try:
+                            conn = psycopg2.connect(st.secrets["database"]["url"])
+                            cur = conn.cursor()
+                            
+                            # Get conversation metrics
+                            cur.execute("""
+                                SELECT 
+                                    AVG(total_exchanges) as avg_exchanges,
+                                    AVG(conversation_duration) as avg_duration,
+                                    COUNT(*) as total_conversations
+                                FROM conversation_metrics;
+                            """)
+                            
+                            conv_stats = pd.DataFrame(cur.fetchall(), 
+                                columns=["Avg Exchanges", "Avg Duration (s)", "Total Conversations"])
+                            
+                            if not conv_stats.empty and conv_stats["Total Conversations"].iloc[0] > 0:
+                                # Format only if we have data
+                                formatted_stats = conv_stats.copy()
+                                formatted_stats["Avg Exchanges"] = formatted_stats["Avg Exchanges"].round(1)
+                                formatted_stats["Avg Duration (s)"] = formatted_stats["Avg Duration (s)"].round(1)
+                                st.dataframe(formatted_stats)
+                            else:
+                                st.write("No conversation metrics available.")
+                                
+                        except Exception as e:
+                            st.error(f"Error fetching conversation metrics: {e}")
+                        finally:
+                            if 'cur' in locals(): cur.close()
+                            if 'conn' in locals(): conn.close()
+                    
+                    with tab5:
+                        st.subheader("Deal Analysis")
+                        try:
+                            conn = psycopg2.connect(st.secrets["database"]["url"])
+                            cur = conn.cursor()
+                            
+                            # Get deal metrics
+                            cur.execute("""
+                                SELECT 
+                                    AVG(negotiation_rounds) as avg_rounds,
+                                    AVG(deal_value) as avg_value,
+                                    COUNT(*) as total_deals,
+                                    SUM(CASE WHEN deal_success THEN 1 ELSE 0 END) as successful_deals
+                                FROM deal_metrics;
+                            """)
+                            
+                            deal_stats = pd.DataFrame(cur.fetchall(), 
+                                columns=["Avg Rounds", "Avg Value", "Total Deals", "Successful Deals"])
+                            
+                            if not deal_stats.empty and deal_stats["Total Deals"].iloc[0] > 0:
+                                # Format only if we have data
+                                formatted_stats = deal_stats.copy()
+                                formatted_stats["Avg Rounds"] = formatted_stats["Avg Rounds"].round(1)
+                                formatted_stats["Avg Value"] = formatted_stats["Avg Value"].round(1)
+                                st.dataframe(formatted_stats)
+                                
+                                # Calculate success rate
+                                success_rate = (deal_stats["Successful Deals"].iloc[0] / deal_stats["Total Deals"].iloc[0]) * 100
+                                st.write(f"Deal Success Rate: {success_rate:.1f}%")
+                            else:
+                                st.write("No deal metrics available.")
+                                
+                        except Exception as e:
+                            st.error(f"Error fetching deal metrics: {e}")
+                        finally:
+                            if 'cur' in locals(): cur.close()
+                            if 'conn' in locals(): conn.close()
+
     else:
         st.header("Control Panel")
         st.write('Page accessible only to Professors.')
+
+    # Record page exit
+    if 'authenticated' in st.session_state and st.session_state['authenticated']:
+        record_page_exit('Control Panel')
 
 else:
     st.header("Control Panel")

@@ -1,3 +1,4 @@
+streamlit>=1.32.0
 psycopg2-binary
 pyjwt
 streamlit-aggrid
@@ -6,3 +7,7 @@ ag2
 openai
 flask
 google-api-python-client
+google-auth
+pandas
+matplotlib
+pytest 

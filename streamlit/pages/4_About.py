@@ -18,7 +18,7 @@ if st.session_state['authenticated']:
 
     st.header("About")
 
-    st.write('This app was developed by four MSc Data Science students from Instituto Superior Técnico, under the guidance of Professor Rodrigo Belo from Nova School of Business and Economics.')
+    st.write('This app was developed by students from Instituto Superior Técnico and Nova School of Business and Economics, under the guidance of Professors Rodrigo Belo and Bernardo Forbes Costa from Nova School of Business and Economics.')
 
 else:
     st.header("About")

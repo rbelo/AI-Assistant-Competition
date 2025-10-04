@@ -6,11 +6,25 @@ import os
 import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from modules.database_handler import exists_user
+from .database_handler import exists_user
 
-MAIL = st.secrets["mail"]
-MAIL_API_PASS = st.secrets["mail_api"]
-APP_LINK = st.secrets["app_link"]
+def get_mail():
+    try:
+        return st.secrets["mail"]["email"]
+    except (KeyError, AttributeError):
+        return None
+
+def get_mail_api_pass():
+    try:
+        return st.secrets["mail"]["api_key"]
+    except (KeyError, AttributeError):
+        return None
+
+def get_app_link():
+    try:
+        return st.secrets["app"]["link"]
+    except (KeyError, AttributeError):
+        return None
 
 # Validate email format (lowercase only)
 def valid_email(email):
@@ -31,7 +45,7 @@ def set_password(email):
 def send_set_password_email(email, set_password_link):
     message = MIMEMultipart()
     message['Subject'] = "AI-Assistant Competition: Set Your Password"
-    message['From'] = MAIL
+    message['From'] = get_mail()
     message['To'] = email
     body = MIMEText(f"Click here to set your password: https://{set_password_link}", 'plain')
     message.attach(body)
@@ -39,8 +53,8 @@ def send_set_password_email(email, set_password_link):
     try:
         with smtplib.SMTP('smtp.gmail.com', 587) as server:
             server.starttls()
-            server.login(MAIL, MAIL_API_PASS)
-            server.sendmail(MAIL, email, message.as_string())
+            server.login(get_mail(), get_mail_api_pass())
+            server.sendmail(get_mail(), email, message.as_string())
             print("Set password email sent successfully")
     except Exception as e:
         print(f"Error sending email: {e}")
@@ -48,7 +62,8 @@ def send_set_password_email(email, set_password_link):
 # Secret key for JWT
 SECRET_KEY = str(os.getenv("SECRET_KEY"))
 
-base_url = APP_LINK
+def get_base_url():
+    return get_app_link()
 
 # Generate set password link with JWT
 def generate_set_password_link(email):
@@ -59,5 +74,5 @@ def generate_set_password_link(email):
     if isinstance(token, bytes):
         token = token.decode('utf-8')
     
-    set_password_url = f"{base_url}?set_password={token}"
+    set_password_url = f"{get_base_url()}?set_password={token}"
     return set_password_url

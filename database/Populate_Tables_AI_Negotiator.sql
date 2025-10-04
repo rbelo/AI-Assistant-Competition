@@ -53,3 +53,13 @@ VALUES ('nova199032', 'master');
 -- Inserting Lénia Mestrinho into professor's table
 INSERT INTO professor (user_id, permission_level) 
 VALUES ('nova196331', 'regular');
+
+----------------------------------------------------------------------------------------------------------------------------------------------
+---------------------------------------------- INSERT GAME MODES -----------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------------------
+
+-- Add game modes
+INSERT INTO game_modes (mode_name, description) 
+VALUES 
+    ('zero_sum', 'Configuration for zero sum games'),
+    ('prisoners_dilemma', 'Configuration for prisoners dilemma games');

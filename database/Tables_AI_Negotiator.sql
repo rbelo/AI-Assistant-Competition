@@ -1,9 +1,13 @@
 -- Dropping tables in reverse order of dependency to ensure no foreign key violations                                 
-DROP TABLE IF EXISTS professor;
-DROP TABLE IF EXISTS plays;                              
-DROP TABLE IF EXISTS user_;
-DROP TABLE IF EXISTS round;
-DROP TABLE IF EXISTS game;
+DROP TABLE IF EXISTS professor CASCADE;
+DROP TABLE IF EXISTS plays CASCADE;                              
+DROP TABLE IF EXISTS user_ CASCADE;
+DROP TABLE IF EXISTS round CASCADE;
+DROP TABLE IF EXISTS game CASCADE;
+DROP TABLE IF EXISTS group_values CASCADE;
+DROP TABLE IF EXISTS game_modes CASCADE;
+DROP TABLE IF EXISTS zero_sum_game_config CASCADE;
+DROP TABLE IF EXISTS prisoners_dilemma_config CASCADE;
 
 
 -- user table
@@ -30,7 +34,7 @@ CREATE TABLE professor (
 -- game table
 CREATE TABLE game (
     game_id SERIAL,                                                       -- Unique identifier for each game, auto-incremented, not null
-    available SMALLINT NOT NULL,                                          -- Indicates whether the negotiation chats are visible to students: 1 (visible), 0 (hidden).
+    available SMALLINT NOT NULL,                                          -- Indicates whether the negotiation chats are visible to students: 1 (visible), 0 (hidden).
     created_by VARCHAR(50) NOT NULL,                                      -- userID (university ID) of the professor that created the game, cannot be null
     game_name VARCHAR(100) NOT NULL,                                      -- Name of the game, cannot be null
     number_of_rounds SMALLINT NOT NULL,                                   -- Number of rounds in the game, cannot be null
@@ -40,9 +44,21 @@ CREATE TABLE game (
     password VARCHAR(100) NOT NULL,                                       -- Hashed password to enter the game, cannot be null 
     timestamp_game_creation TIMESTAMP DEFAULT CURRENT_TIMESTAMP,          -- Timestamp of game creation, defaults to the current time
     timestamp_submission_deadline TIMESTAMP DEFAULT CURRENT_TIMESTAMP,    -- Timestamp of the submission deadline, defaults to the current time
+    explanation TEXT,                                                     -- Explanation of the game rules and objectives
     PRIMARY KEY(game_id)                                                  -- Set game_id as the primary key
     -- Every game must exist in the table 'plays'
     -- Every game must exist in the table 'contains'
+);
+
+-- group_values table
+CREATE TABLE group_values (
+    game_id INT NOT NULL,
+    class VARCHAR(10) NOT NULL,
+    group_id INT NOT NULL,
+    minimizer_value FLOAT NOT NULL,
+    maximizer_value FLOAT NOT NULL,
+    PRIMARY KEY (game_id, class, group_id),
+    FOREIGN KEY (game_id) REFERENCES game(game_id) ON DELETE CASCADE
 );
 
 -- plays table
@@ -68,4 +84,38 @@ CREATE TABLE round (
     score_team2_role1 FLOAT NOT NULL,                                     -- Score of team 2 in a specific round with role1, cannot be null
     PRIMARY KEY(game_id, round_number, group1_class, group1_id, group2_class, group2_id),     -- Set game_id, round_number, group1_class, group1_id,  group2_class and group2_id as the composite primary keys
     FOREIGN KEY(game_id) REFERENCES game(game_id)                         -- Foreign key linking to the game_id in the game table
+);
+
+
+-- Create a table for game modes
+CREATE TABLE game_modes (
+    mode_id SERIAL PRIMARY KEY,
+    mode_name VARCHAR(50) NOT NULL UNIQUE,
+    description TEXT
+);
+
+-- Add a foreign key to the game table to reference game modes
+ALTER TABLE game
+ADD COLUMN mode_id INT,
+ADD CONSTRAINT fk_game_mode FOREIGN KEY (mode_id) REFERENCES game_modes(mode_id);
+
+-- Add a table for Zero-Sum game-specific configurations
+CREATE TABLE zero_sum_game_config (
+    config_id SERIAL PRIMARY KEY,
+    game_id INT NOT NULL,
+    minimizer_role_name VARCHAR(50),
+    maximizer_role_name VARCHAR(50),
+    min_minimizer_value INT,
+    max_minimizer_value INT,
+    min_maximizer_value INT,
+    max_maximizer_value INT,
+    FOREIGN KEY (game_id) REFERENCES game(game_id) ON DELETE CASCADE
+);
+
+-- Add a table for Prisoner's Dilemma game-specific configurations
+CREATE TABLE prisoners_dilemma_config (
+    config_id SERIAL PRIMARY KEY,
+    game_id INT NOT NULL,
+    payoff_matrix JSONB NOT NULL,
+    FOREIGN KEY (game_id) REFERENCES game(game_id) ON DELETE CASCADE
 );
