@@ -21,6 +21,15 @@ def get_mail_api_pass():
         return None
 
 def get_app_link():
+    # Auto-detect local development environment
+    try:
+        host = st.context.headers.get("Host", "")
+        if "localhost" in host or "127.0.0.1" in host:
+            return f"http://{host}"
+    except Exception:
+        pass  # st.context may not be available in all contexts
+
+    # Fall back to configured production URL
     try:
         return st.secrets["app"]["link"]
     except (KeyError, AttributeError):
@@ -34,12 +43,12 @@ def valid_email(email):
     return bool(re.match(email_pattern, email))
 
 # Initiate set password
+# Returns: True if email sent successfully, False if email failed, None if user not found
 def set_password(email):
     if exists_user(email):
         set_password_link = generate_set_password_link(email)
-        send_set_password_email(email, set_password_link)
-        return True
-    return False
+        return send_set_password_email(email, set_password_link)
+    return None
 
 # Send email with set password link
 def send_set_password_email(email, set_password_link):
@@ -47,7 +56,7 @@ def send_set_password_email(email, set_password_link):
     message['Subject'] = "AI-Assistant Competition: Set Your Password"
     message['From'] = get_mail()
     message['To'] = email
-    body = MIMEText(f"Click here to set your password: https://{set_password_link}", 'plain')
+    body = MIMEText(f"Click here to set your password: {set_password_link}", 'plain')
     message.attach(body)
 
     try:
@@ -56,8 +65,10 @@ def send_set_password_email(email, set_password_link):
             server.login(get_mail(), get_mail_api_pass())
             server.sendmail(get_mail(), email, message.as_string())
             print("Set password email sent successfully")
+            return True
     except Exception as e:
         print(f"Error sending email: {e}")
+        return False
 
 # Secret key for JWT
 SECRET_KEY = str(os.getenv("SECRET_KEY"))

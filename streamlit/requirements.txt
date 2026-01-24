@@ -2,12 +2,12 @@ streamlit>=1.32.0
 psycopg2-binary
 pyjwt
 streamlit-aggrid
-autogen
-ag2
+autogen>=0.10.0  # Microsoft AutoGen framework (requires Python <3.14)
 openai
 flask
 google-api-python-client
 google-auth
+cryptography
 pandas
 matplotlib
 pytest 

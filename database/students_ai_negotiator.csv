@@ -1,4 +1,4 @@
-userID;email;groupID;academic year;class
+user_id;email;group_id;academic_year;class
 nova192300;rodrigo.lopes@gmail.com;1;2022;A
 nova134029;carla.moniz@gmail.com;2;2022;B
 nova100988;sara.taborda@gmail.com;3;2022;A

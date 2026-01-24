@@ -10,13 +10,8 @@ This module adds a playground feature to the platform, allowing students to:
 
 import streamlit as st
 import re
-import time
 import autogen
-import random
-from datetime import datetime
-import hashlib
-from .database_handler import get_group_id_from_user_id, get_class_from_user_id
-from .drive_file_manager import get_text_from_file_without_timestamp, overwrite_text_file
+from .database_handler import get_group_id_from_user_id, get_class_from_user_id, insert_playground_result, get_playground_results
 
 # Function for cleaning dialogue messages to remove agent name prefixes
 def clean_agent_message(agent_name_1, agent_name_2, message):
@@ -88,16 +83,19 @@ def run_playground_negotiation(role1_prompt, role2_prompt, role1_name, role2_nam
 # Save playground negotiation results for future reference
 def save_playground_results(user_id, class_, group_id, role1_name, role2_name,
                             negotiation_text):
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    filename = f"Playground_User{user_id}_Class{class_}_Group{group_id}_{timestamp}"
-    overwrite_text_file(negotiation_text, filename, remove_timestamp=False)
-    return filename
+    return insert_playground_result(
+        user_id=user_id,
+        class_=class_,
+        group_id=group_id,
+        role1_name=role1_name,
+        role2_name=role2_name,
+        transcript=negotiation_text,
+    )
 
 
 # Load previous playground negotiation results
 def load_playground_results(user_id, class_, group_id):
-    pattern = f"Playground_User{user_id}_Class{class_}_Group{group_id}"
-    return get_text_from_file_without_timestamp(pattern)
+    return get_playground_results(user_id, class_, group_id)
 
 
 # Main playground page function
@@ -163,11 +161,14 @@ def display_student_playground():
 
                     # Save results if requested
                     if save_results:
-                        filename = save_playground_results(
+                        result_id = save_playground_results(
                             user_id, class_, group_id, role1_name, role2_name,
                             negotiation_text
                         )
-                        st.success(f"Results saved successfully! Reference ID: {filename}")
+                        if result_id:
+                            st.success(f"Results saved successfully! Reference ID: {result_id}")
+                        else:
+                            st.error("Failed to save results.")
 
                 except Exception as e:
                     st.error(f"An error occurred during the negotiation: {str(e)}")
@@ -179,7 +180,18 @@ def display_student_playground():
         previous_tests = load_playground_results(user_id, class_, group_id)
 
         if previous_tests:
-            st.text_area("Previous Test Results", previous_tests, height=400)
+            for i, test_result in enumerate(previous_tests, 1):
+                role_label = ""
+                if test_result["role1_name"] and test_result["role2_name"]:
+                    role_label = f"{test_result['role1_name']} vs {test_result['role2_name']} - "
+                title = f"{role_label}Test Run {i} ({test_result['created_at']})"
+                with st.expander(title, expanded=i == 1):
+                    st.text_area(
+                        "Negotiation Transcript",
+                        test_result["transcript"],
+                        height=400,
+                        key=f"playground_test_{test_result['id']}",
+                    )
         else:
             st.info("You don't have any previous playground tests. Create a new test to see results here.")
 

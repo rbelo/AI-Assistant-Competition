@@ -12,7 +12,7 @@ SCOPES = ['https://www.googleapis.com/auth/drive']
 
 def get_parent_folder_id():
     try:
-        return st.secrets["folder_id"]
+        return dict(st.secrets["drive"]).get("folder_id")
     except (KeyError, AttributeError):
         return None
 

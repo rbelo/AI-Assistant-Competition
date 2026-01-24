@@ -1,6 +1,11 @@
--- Dropping tables in reverse order of dependency to ensure no foreign key violations                                 
-DROP TABLE IF EXISTS professor CASCADE;
-DROP TABLE IF EXISTS plays CASCADE;                              
+-- Dropping tables in reverse order of dependency to ensure no foreign key violations
+DROP TABLE IF EXISTS student_prompt CASCADE;
+DROP TABLE IF EXISTS playground_result CASCADE;
+DROP TABLE IF EXISTS game_simulation_params CASCADE;
+DROP TABLE IF EXISTS instructor_api_key CASCADE;
+DROP TABLE IF EXISTS negotiation_chat CASCADE;
+DROP TABLE IF EXISTS instructor CASCADE;
+DROP TABLE IF EXISTS plays CASCADE;
 DROP TABLE IF EXISTS user_ CASCADE;
 DROP TABLE IF EXISTS round CASCADE;
 DROP TABLE IF EXISTS game CASCADE;
@@ -23,19 +28,28 @@ CREATE TABLE user_ (
     UNIQUE(email)                                                         -- Enforce unique constraint on email
 );
 
--- professor table
-CREATE TABLE professor (
+-- instructor table
+CREATE TABLE instructor (
     user_id VARCHAR(50),                                                  -- Unique userID (university ID), cannot be null
-    permission_level VARCHAR(20) NOT NULL,                                -- Permission level for the professor, cannot be null
+    permission_level VARCHAR(20) NOT NULL,                                -- Permission level for the instructor, cannot be null
     PRIMARY KEY(user_id),                                                 -- Set username as the primary key
     FOREIGN KEY(user_id) REFERENCES user_(user_id)                        -- Foreign key linking to the username in the user table
+);
+
+-- instructor_api_key table
+CREATE TABLE instructor_api_key (
+    user_id VARCHAR(50),
+    encrypted_key TEXT NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY(user_id),
+    FOREIGN KEY(user_id) REFERENCES user_(user_id) ON DELETE CASCADE
 );
 
 -- game table
 CREATE TABLE game (
     game_id SERIAL,                                                       -- Unique identifier for each game, auto-incremented, not null
     available SMALLINT NOT NULL,                                          -- Indicates whether the negotiation chats are visible to students: 1 (visible), 0 (hidden).
-    created_by VARCHAR(50) NOT NULL,                                      -- userID (university ID) of the professor that created the game, cannot be null
+    created_by VARCHAR(50) NOT NULL,                                      -- userID (university ID) of the instructor that created the game, cannot be null
     game_name VARCHAR(100) NOT NULL,                                      -- Name of the game, cannot be null
     number_of_rounds SMALLINT NOT NULL,                                   -- Number of rounds in the game, cannot be null
     name_roles VARCHAR(50) NOT NULL,                                      -- Names of the roles in the game, cannot be null
@@ -86,6 +100,21 @@ CREATE TABLE round (
     FOREIGN KEY(game_id) REFERENCES game(game_id)                         -- Foreign key linking to the game_id in the game table
 );
 
+-- negotiation_chat table
+CREATE TABLE negotiation_chat (
+    game_id INT NOT NULL,
+    round_number SMALLINT NOT NULL,
+    group1_class CHAR(1) NOT NULL,
+    group1_id SMALLINT NOT NULL,
+    group2_class CHAR(1) NOT NULL,
+    group2_id SMALLINT NOT NULL,
+    transcript TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (game_id, round_number, group1_class, group1_id, group2_class, group2_id),
+    FOREIGN KEY (game_id) REFERENCES game(game_id) ON DELETE CASCADE
+);
+
 
 -- Create a table for game modes
 CREATE TABLE game_modes (
@@ -118,4 +147,93 @@ CREATE TABLE prisoners_dilemma_config (
     game_id INT NOT NULL,
     payoff_matrix JSONB NOT NULL,
     FOREIGN KEY (game_id) REFERENCES game(game_id) ON DELETE CASCADE
+);
+
+-- student_prompt table - stores student prompts
+CREATE TABLE student_prompt (
+    game_id INT NOT NULL,
+    class VARCHAR(10) NOT NULL,
+    group_id SMALLINT NOT NULL,
+    prompt TEXT NOT NULL,                              -- Combined format with #_;:) delimiter
+    submitted_by VARCHAR(50),                          -- user_id of the submitter
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (game_id, class, group_id),
+    FOREIGN KEY (game_id) REFERENCES game(game_id) ON DELETE CASCADE
+);
+
+-- metrics tables
+CREATE TABLE page_visit (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(255),
+    page_name VARCHAR(255),
+    entry_timestamp TIMESTAMP,
+    exit_timestamp TIMESTAMP,
+    duration_seconds FLOAT
+);
+
+CREATE TABLE game_interaction (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(255),
+    game_id INTEGER,
+    game_type VARCHAR(50),
+    completion_time FLOAT,
+    score FLOAT,
+    timestamp TIMESTAMP
+);
+
+CREATE TABLE prompt_metrics (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(255),
+    prompt_text TEXT,
+    word_count INTEGER,
+    character_count INTEGER,
+    response_time FLOAT,
+    timestamp TIMESTAMP
+);
+
+CREATE TABLE conversation_metrics (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(255),
+    conversation_id VARCHAR(255),
+    total_exchanges INTEGER,
+    conversation_duration FLOAT,
+    timestamp TIMESTAMP
+);
+
+CREATE TABLE deal_metrics (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(255),
+    game_id INTEGER,
+    negotiation_rounds INTEGER,
+    deal_value FLOAT,
+    deal_success BOOLEAN,
+    timestamp TIMESTAMP
+);
+
+-- game_simulation_params table - stores simulation parameters for a game
+CREATE TABLE game_simulation_params (
+    game_id INT NOT NULL,
+    model TEXT NOT NULL,
+    conversation_order TEXT NOT NULL,
+    starting_message TEXT NOT NULL,
+    num_turns INT NOT NULL,
+    negotiation_termination_message TEXT NOT NULL,
+    summary_prompt TEXT NOT NULL,
+    summary_termination_message TEXT NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (game_id),
+    FOREIGN KEY (game_id) REFERENCES game(game_id) ON DELETE CASCADE
+);
+
+-- playground_result table - stores playground negotiation transcripts
+CREATE TABLE playground_result (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(255) NOT NULL,
+    class VARCHAR(10) NOT NULL,
+    group_id INT NOT NULL,
+    role1_name TEXT,
+    role2_name TEXT,
+    transcript TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

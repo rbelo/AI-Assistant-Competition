@@ -1,7 +1,6 @@
 import re
 import autogen
-from .database_handler import insert_round_data, update_round_data, get_error_matchups
-from .drive_file_manager import get_text_from_file_without_timestamp, overwrite_text_file
+from .database_handler import insert_round_data, update_round_data, get_error_matchups, get_game_by_id, insert_negotiation_chat, get_student_prompt
 from .schedule import berger_schedule
 from modules.metrics_handler import record_prompt_metrics, record_prompt_submission, record_conversation_metrics, record_conversation_processing, record_deal_metrics, record_deal_analysis
 import time
@@ -21,19 +20,42 @@ def clean_agent_message(agent_name_1, agent_name_2, message):
     return clean_message
 
 
-def create_chat(config_list=None, agent_1_role=None, agent_1_prompt=None,
-                agent_2_role=None, agent_2_prompt=None,
-                team1=None, team2=None, game_id=None, order=None, round_num=None,
-                starting_message="", num_turns=10,
-                summary_prompt="", user=None, summary_agent=None,
-                summary_termination_message="", write_to_file=True,
-                game_type="zero-sum", negotiation_termination_message=None):
-    """
-    Unified create_chat function:
-    - If team1 and team2 are provided, use class-based agents (framework mode)
-    - If prompts and roles are provided, use standalone dynamic agents (experimental mode)
-    """
+def parse_team_name(team_name):
+    if not team_name:
+        return None, None
+    parts = team_name.split("_")
+    if len(parts) < 2:
+        return None, None
+    class_part = parts[0].replace("Class", "")
+    group_part = parts[1].replace("Group", "")
+    try:
+        group_part = int(group_part)
+    except ValueError:
+        pass
+    return class_part, group_part
 
+
+def create_chat(game_id, order, team1, team2, starting_message, num_turns, summary_prompt,
+                round_num, user, summary_agent, summary_termination_message,
+                store_in_db=True, game_type="zero-sum"):
+    """
+    Create a negotiation chat between two teams.
+
+    Args:
+        game_id: The game ID
+        order: 'same' or 'opposite' for role ordering
+        team1: First team dict with 'Agent 1', 'Agent 2', 'Name', 'Value 1', 'Value 2'
+        team2: Second team dict
+        starting_message: Initial message to start negotiation
+        num_turns: Maximum number of turns
+        summary_prompt: Prompt for the summary agent
+        round_num: Round number
+        user: User proxy agent for summary
+        summary_agent: Agent to evaluate deal outcome
+        summary_termination_message: Message prefix for deal value extraction
+        store_in_db: Whether to store chat in database
+        game_type: Type of game (zero-sum, etc.)
+    """
     # Get game explanation from database
     game_details = get_game_by_id(game_id)
     game_explanation = game_details.get("explanation", "") if game_details else ""
@@ -41,42 +63,17 @@ def create_chat(config_list=None, agent_1_role=None, agent_1_prompt=None,
     # Add game type and explanation to the context
     game_context = f"Game Type: {game_type}\nGame Explanation: {game_explanation}\n\n"
 
-    # Choose mode based on presence of team1/team2
-    if team1 and team2:
-        agent1 = team1["Agent 1"]
-        agent2 = team2["Agent 2"]
-        name1 = agent1.name
-        name2 = agent2.name
+    # Use agents from team dicts
+    agent1 = team1["Agent 1"]
+    agent2 = team2["Agent 2"]
+    name1 = agent1.name
+    name2 = agent2.name
 
-        # Add game context to prompts
-        agent1.prompt = game_context + agent1.prompt
-        agent2.prompt = game_context + agent2.prompt
-    else:
-        assert all([agent_1_role, agent_1_prompt, agent_2_role, agent_2_prompt, config_list]), \
-            "Standalone mode requires agent roles, prompts, and config_list"
-
-        # Create a closure to capture chat history
-        def create_termination_check(history):
-            return lambda msg: is_valid_termination(msg, history, negotiation_termination_message)
-
-        # Build agents dynamically
-        agent1 = autogen.ConversableAgent(
-            name=agent_1_role,
-            llm_config=config_list,
-            human_input_mode="NEVER",
-            chat_messages=None,
-            system_message=agent_1_prompt + (f" When the negotiation is finished, say {negotiation_termination_message}." if negotiation_termination_message else ""),
-            is_termination_msg=create_termination_check([])
-        )
-        agent2 = autogen.ConversableAgent(
-            name=agent_2_role,
-            llm_config=config_list,
-            human_input_mode="NEVER",
-            chat_messages=None,
-            system_message=agent_2_prompt + (f" When the negotiation is finished, say {negotiation_termination_message}." if negotiation_termination_message else ""),
-            is_termination_msg=create_termination_check([])
-        )
-        name1, name2 = agent1.name, agent2.name
+    # Add game context to agent prompts
+    if hasattr(agent1, 'system_message') and agent1.system_message:
+        agent1.update_system_message(game_context + agent1.system_message)
+    if hasattr(agent2, 'system_message') and agent2.system_message:
+        agent2.update_system_message(game_context + agent2.system_message)
 
     chat = agent1.initiate_chat(
         agent2,
@@ -84,10 +81,6 @@ def create_chat(config_list=None, agent_1_role=None, agent_1_prompt=None,
         max_turns=num_turns,
         message=starting_message
     )
-
-    # Update termination checks with actual chat history
-    agent1.is_termination_msg = create_termination_check(chat.chat_history)
-    agent2.is_termination_msg = create_termination_check(chat.chat_history)
 
     negotiation = ""
     summ = ""
@@ -110,16 +103,30 @@ def create_chat(config_list=None, agent_1_role=None, agent_1_prompt=None,
         deal_str = summary_eval.chat_history[1]['content']
         negotiation += "\n" + deal_str
 
-    if write_to_file and team1 and team2 and game_id and round_num is not None:
-        if order == "same":
-            filename = f"Game{game_id}_Round{round_num}_{team1['Name']}_{team2['Name']}.txt"
-        elif order == "opposite":
-            filename = f"Game{game_id}_Round{round_num}_{team2['Name']}_{team1['Name']}.txt"
-        else:
-            filename = f"Game{game_id}_Round{round_num}_Match.txt"
-        overwrite_text_file(negotiation, filename, remove_timestamp=False)
+    if store_in_db and team1 and team2 and game_id and round_num is not None:
+        storage_team1 = team1
+        storage_team2 = team2
+        if order == "opposite":
+            storage_team1 = team2
+            storage_team2 = team1
+        class1, group1 = parse_team_name(storage_team1["Name"])
+        class2, group2 = parse_team_name(storage_team2["Name"])
+        if class1 and group1 is not None and class2 and group2 is not None:
+            try:
+                insert_negotiation_chat(
+                    game_id=game_id,
+                    round_number=round_num,
+                    group1_class=class1,
+                    group1_id=group1,
+                    group2_class=class2,
+                    group2_id=group2,
+                    transcript=negotiation
+                )
+            except Exception as e:
+                print(f"Warning: Failed to store negotiation chat: {e}")
 
     # Parse the result value
+    deal_value = -1  # Default to -1 (failed negotiation)
     if summary_termination_message and deal_str.startswith(summary_termination_message):
         try:
             # Clean the value string before parsing
@@ -130,42 +137,46 @@ def create_chat(config_list=None, agent_1_role=None, agent_1_prompt=None,
             print(f"Error parsing deal value: {str(e)}")
             deal_value = -1
 
-    # Record prompt metrics
+    # Record metrics (with safe defaults for optional values)
     start_time = time.time()
-    record_prompt_metrics(
-        user_id=user.name if user else None,
-        prompt=starting_message,
-        response=negotiation,
-        processing_time=time.time() - start_time
-    )
-    record_prompt_submission(user_id=user.name if user else None)
-    
-    # Record conversation metrics
-    record_conversation_metrics(
-        user_id=user.name if user else None,
-        conversation_id=conversation_id,
-        duration=time.time() - start_time,
-        messages_count=len(messages)
-    )
-    record_conversation_processing(
-        user_id=user.name if user else None,
-        processing_time=time.time() - start_time
-    )
-    
-    # Record deal metrics if a deal was made
-    if deal_value > 0:
-        record_deal_metrics(
+    try:
+        record_prompt_metrics(
             user_id=user.name if user else None,
-            deal_id=deal_id,
-            value=deal_value,
-            duration=time.time() - start_time
+            prompt=starting_message,
+            response=negotiation,
+            processing_time=time.time() - start_time
         )
-        record_deal_analysis(
+        record_prompt_submission(user_id=user.name if user else None)
+
+        # Record conversation metrics
+        record_conversation_metrics(
             user_id=user.name if user else None,
-            deal_id=deal_id,
-            analysis=deal_analysis
+            conversation_id=f"{game_id}_{round_num}" if game_id and round_num else None,
+            duration=time.time() - start_time,
+            messages_count=len(chat.chat_history) if chat else 0
         )
-    
+        record_conversation_processing(
+            user_id=user.name if user else None,
+            processing_time=time.time() - start_time
+        )
+
+        # Record deal metrics if a deal was made
+        if deal_value > 0:
+            record_deal_metrics(
+                user_id=user.name if user else None,
+                deal_id=f"{game_id}_{round_num}_{team1['Name'] if team1 else 'unknown'}",
+                value=deal_value,
+                duration=time.time() - start_time
+            )
+            record_deal_analysis(
+                user_id=user.name if user else None,
+                deal_id=f"{game_id}_{round_num}_{team1['Name'] if team1 else 'unknown'}",
+                analysis=deal_str
+            )
+    except Exception as e:
+        # Don't fail the whole negotiation if metrics recording fails
+        print(f"Warning: Failed to record metrics: {e}")
+
     return deal_value
 
 def validate_message(message, game_type="zero-sum"):
@@ -288,7 +299,9 @@ def create_agents(game_id, order, teams, values, name_roles, config_list, negoti
 
     for team in teams:
         try:
-            submission = get_text_from_file_without_timestamp(f'Game{game_id}_Class{team[0]}_Group{team[1]}')
+            submission = get_student_prompt(game_id, team[0], team[1])
+            if not submission:
+                raise Exception(f"No submission found for team {team}")
 
             value_dict = next((value for value in values if value["class"] == team[0] and int(value["group_id"]) == team[1]), None)
             if value_dict is None:
@@ -333,13 +346,13 @@ def create_agents(game_id, order, teams, values, name_roles, config_list, negoti
             team_info.append(new_team)
         except Exception as e:
             print(f"Error creating agents for team {team}: {str(e)}")
-            continue
+            raise
 
     return team_info
 
 
 def create_chats(game_id, config_list, name_roles, order, teams, values, num_rounds, starting_message, num_turns,
-                 negotiation_termination_message, summary_prompt, summary_termination_message):
+                 negotiation_termination_message, summary_prompt, summary_termination_message, progress_callback=None):
     schedule = berger_schedule([f'Class{i[0]}_Group{i[1]}' for i in teams], num_rounds)
 
     team_info = create_agents(game_id, order, teams, values, name_roles, config_list, negotiation_termination_message)
@@ -382,10 +395,13 @@ Be thorough in your analysis and only report an agreement if ALL conditions are 
     )
 
     max_retries = 10
+    total_matches = 0
+    completed_matches = 0
 
     errors_matchups = []
 
     for round_, round_matches in enumerate(schedule, 1):
+        total_matches += len(round_matches) * 2
 
         for match in round_matches:
 
@@ -402,6 +418,9 @@ Be thorough in your analysis and only report an agreement if ALL conditions are 
             group2 = class_group_2[1][5:]
 
             insert_round_data(game_id, round_, class1, group1, class2, group2, -1, -1, -1, -1)
+
+            if progress_callback:
+                progress_callback(round_, team1, team2, order)
 
             # Attempt to create the first chat
             for attempt in range(max_retries):
@@ -424,6 +443,7 @@ Be thorough in your analysis and only report an agreement if ALL conditions are 
 
                         update_round_data(game_id, round_, class1, group1, class2, group2, score1_team1, score1_team2,
                                           order)
+                        completed_matches += 1
 
                     else:
 
@@ -461,6 +481,7 @@ Be thorough in your analysis and only report an agreement if ALL conditions are 
 
                         update_round_data(game_id, round_, class1, group1, class2, group2, score1_team1, score1_team2,
                                           order)
+                        completed_matches += 1
 
                     break  # Exit retry loop on success
 
@@ -506,6 +527,7 @@ Be thorough in your analysis and only report an agreement if ALL conditions are 
 
                         update_round_data(game_id, round_, class1, group1, class2, group2, score2_team1, score2_team2,
                                           "opposite")
+                        completed_matches += 1
 
                     elif order == "opposite":
 
@@ -527,6 +549,7 @@ Be thorough in your analysis and only report an agreement if ALL conditions are 
 
                         update_round_data(game_id, round_, class1, group1, class2, group2, score2_team1, score2_team2,
                                           "same")
+                        completed_matches += 1
 
                     break  # Exit retry loop on success
 
@@ -539,7 +562,11 @@ Be thorough in your analysis and only report an agreement if ALL conditions are 
 
     # error messages
     if not errors_matchups:
-        return "All negotiations were completed successfully!"
+        return {
+            "status": "success",
+            "completed_matches": completed_matches,
+            "total_matches": total_matches,
+        }
 
     else:
 

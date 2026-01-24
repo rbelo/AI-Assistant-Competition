@@ -1,17 +1,16 @@
 import streamlit as st
-import pandas as pd
-import time
 import re
 import autogen
-import random
-from datetime import datetime
-import hashlib
-from modules.database_handler import get_group_id_from_user_id, get_class_from_user_id
-from modules.drive_file_manager import get_text_from_file_without_timestamp, overwrite_text_file, upload_text_as_file, find_and_delete
+from modules.database_handler import get_group_id_from_user_id, get_class_from_user_id, insert_playground_result, get_playground_results
+from modules.database_handler import delete_playground_result, delete_all_playground_results
+from modules.database_handler import get_instructor_api_key, upsert_instructor_api_key
 from modules.negotiations import is_valid_termination
+from modules.sidebar import render_sidebar
 
 # Set page configuration
 st.set_page_config(page_title="AI Assistant Playground", page_icon="🧪")
+
+render_sidebar()
 
 
 # Function for cleaning dialogue messages to remove agent name prefixes
@@ -84,16 +83,20 @@ def run_playground_negotiation(role1_prompt, role2_prompt, role1_name, role2_nam
 # Save playground negotiation results for future reference
 def save_playground_results(user_id, class_, group_id, role1_name, role2_name,
                             negotiation_text):
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    filename = f"Playground_Class{class_}_Group{group_id}_{timestamp}"
-    overwrite_text_file(negotiation_text, filename, remove_timestamp=False)
-    return filename
+    return insert_playground_result(
+        user_id=user_id,
+        class_=class_,
+        group_id=group_id,
+        role1_name=role1_name,
+        role2_name=role2_name,
+        transcript=negotiation_text,
+    )
 
 
 # Search and load previous playground negotiation results
 def find_playground_results(class_, group_id):
-    pattern = f"Playground_Class{class_}_Group{group_id}"
-    return get_text_from_file_without_timestamp(pattern)
+    user_id = st.session_state.get('user_id', '')
+    return get_playground_results(user_id, class_, group_id)
 
 
 # Check if the user is authenticated
@@ -101,17 +104,6 @@ if not st.session_state.get('authenticated', False):
     st.title("AI Agent Playground")
     st.warning("Please login first to access the Playground.")
 else:
-    # Create sign-out button
-    _, _, col3 = st.columns([2, 8, 2])
-    with col3:
-        sign_out_btn = st.button("Sign Out", key="sign_out", use_container_width=True)
-
-        if sign_out_btn:
-            for key in list(st.session_state.keys()):
-                del st.session_state[key]
-            st.cache_resource.clear()
-            st.switch_page("0_Home.py")  # Redirect to home page
-
     # Get user details
     user_id = st.session_state.get('user_id', '')
     class_ = get_class_from_user_id(user_id)
@@ -146,20 +138,37 @@ else:
             starting_message = st.text_input("Starting Message", value="Hello, I'm interested in negotiating with you.")
             num_turns = st.slider("Maximum Turns", min_value=5, max_value=30, value=15)
             model = st.selectbox("Model", options=["gpt-4o-mini", "gpt-4o"], index=0)
-            api_key = st.text_input("OpenAI API Key", type="password")
+            saved_api_key = get_instructor_api_key(user_id)
+            use_saved_api_key = st.checkbox(
+                "Use saved API key",
+                value=bool(saved_api_key),
+                key="playground_use_saved_api_key",
+            )
+            api_key_key = "playground_api_key"
+            if use_saved_api_key and saved_api_key:
+                if st.session_state.get(api_key_key) != saved_api_key:
+                    st.session_state[api_key_key] = saved_api_key
+            elif st.session_state.get(api_key_key) == saved_api_key:
+                st.session_state[api_key_key] = ""
+            api_key = st.text_input("OpenAI API Key", type="password", key=api_key_key)
+            save_api_key = st.checkbox("Save API key", value=False, key="playground_save_api_key")
             save_results = st.checkbox("Save Results", value=True)
 
             submit_button = st.form_submit_button("Run Test Negotiation")
 
         if submit_button:
-            if not api_key:
+            resolved_api_key = api_key or (saved_api_key if use_saved_api_key else "")
+            if not resolved_api_key:
                 st.error("Please provide an OpenAI API key to run the negotiation")
             else:
                 with st.spinner("Running negotiation test..."):
                     try:
+                        if save_api_key and api_key:
+                            if not upsert_instructor_api_key(user_id, api_key):
+                                st.error("Failed to save API key. Check API_KEY_ENCRYPTION_KEY.")
                         negotiation_text, chat_history = run_playground_negotiation(
                             role1_prompt, role2_prompt, role1_name, role2_name,
-                            starting_message, num_turns, api_key, model
+                            starting_message, num_turns, resolved_api_key, model
                         )
 
                         # Display results
@@ -169,11 +178,14 @@ else:
 
                         # Save results if requested
                         if save_results:
-                            filename = save_playground_results(
+                            result_id = save_playground_results(
                                 user_id, class_, group_id, role1_name, role2_name,
                                 negotiation_text
                             )
-                            st.success(f"Results saved successfully! Reference ID: {filename}")
+                            if result_id:
+                                st.success(f"Results saved successfully! Reference ID: {result_id}")
+                            else:
+                                st.error("Failed to save results.")
 
                     except Exception as e:
                         st.error(f"An error occurred during the negotiation: {str(e)}")
@@ -185,13 +197,44 @@ else:
         previous_tests = find_playground_results(class_, group_id)
 
         if previous_tests:
-            # Split the combined test results by the separator
-            test_results = previous_tests.split("\n\n---\n\n")
-            
-            # Display each test result in an expander
-            for i, test_result in enumerate(test_results, 1):
-                with st.expander(f"Test Run {i}", expanded=i==1):
-                    st.text_area("Negotiation Transcript", test_result, height=400, key=f"test_{i}")
+            @st.dialog("Clear all tests")
+            def confirm_clear_all():
+                st.warning("This will permanently delete all your saved tests.")
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("Confirm clear", key="playground_clear_confirm_btn"):
+                        if delete_all_playground_results(user_id, class_, group_id):
+                            st.success("All tests cleared.")
+                            st.rerun()
+                        else:
+                            st.error("Failed to clear tests.")
+                with col2:
+                    if st.button("Cancel", key="playground_clear_cancel"):
+                        st.rerun()
+
+            if st.button("Clear All", key="playground_clear_all"):
+                confirm_clear_all()
+            for i, test_result in enumerate(previous_tests, 1):
+                role_label = ""
+                if test_result["role1_name"] and test_result["role2_name"]:
+                    role_label = f"{test_result['role1_name']} vs {test_result['role2_name']} - "
+                created_at = test_result["created_at"]
+                if hasattr(created_at, "replace"):
+                    created_at = created_at.replace(microsecond=0)
+                title = f"{role_label}Test Run {i} ({created_at})"
+                with st.expander(title, expanded=i == 1):
+                    if st.button("Delete Test", key=f"delete_test_{test_result['id']}"):
+                        if delete_playground_result(test_result["id"], user_id, class_, group_id):
+                            st.success("Test deleted.")
+                            st.rerun()
+                        else:
+                            st.error("Failed to delete test.")
+                    st.text_area(
+                        "Negotiation Transcript",
+                        test_result["transcript"],
+                        height=400,
+                        key=f"test_{test_result['id']}",
+                    )
         else:
             st.info("You don't have any previous playground tests. Create a new test to see results here.")
 

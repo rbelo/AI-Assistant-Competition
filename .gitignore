@@ -58,6 +58,7 @@ coverage.xml
 
 # Django stuff:
 *.log
+.uv.lock
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
@@ -149,3 +150,5 @@ scripts/similarity/config.yml
 # Secrets file
 .streamlit/secrets.toml
 streamlit/.streamlit
+.aider*
+*.lock

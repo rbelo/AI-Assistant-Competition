@@ -63,8 +63,8 @@ def setup_secrets():
     # Ensure session state variables are initialized to avoid authentication errors
     if "authenticated" not in st.session_state:
         st.session_state["authenticated"] = True
-    if "professor" not in st.session_state:
-        st.session_state["professor"] = True
+    if "instructor" not in st.session_state:
+        st.session_state["instructor"] = True
     if "user_id" not in st.session_state:
         st.session_state["user_id"] = "test_user"
     if "current_visit_id" not in st.session_state:
@@ -352,7 +352,7 @@ def test_authentication():
     """Test user authentication functionality"""
     # Test valid login
     assert st.session_state["authenticated"] == True
-    assert st.session_state["professor"] == True
+    assert st.session_state["instructor"] == True
     assert st.session_state["user_id"] == "test_user"
     
     # Test invalid login

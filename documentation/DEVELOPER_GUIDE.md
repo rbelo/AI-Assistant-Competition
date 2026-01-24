@@ -64,7 +64,7 @@ Choose the method that best suits your workflow. All necessary dependencies and 
 The database consists of the following main tables:
 
 - `user_`: Stores user accounts and authentication information
-- `professor`: Contains professor-specific permissions and settings
+- `instructor`: Contains instructor-specific permissions and settings
 - `game`: Records game instances and configurations
 - `group_values`: Stores group-specific values for games
 - `plays`: Tracks which users are participating in which games
@@ -97,6 +97,11 @@ For the complete schema definition, see `Tables_AI_Negotiator.sql`.
      ```toml
      database = "postgresql://localhost/ai_assistant_competition"
      ```
+   - For encrypted instructor API keys, add:
+     ```toml
+     [app]
+     api_key_encryption_key = "your_fernet_key"
+     ```
    - Test connection:
      ```bash
      psql -d ai_assistant_competition -c "SELECT 'Connection successful' AS status;"
@@ -105,18 +110,18 @@ For the complete schema definition, see `Tables_AI_Negotiator.sql`.
 ### 3.3 Data Management
 
 1. User Management:
-   - Professors can add students through the Control Panel's CSV upload feature (available at `/Control_Panel` page)
+   - Instructors can add students through the Control Panel's CSV upload feature (available at `/Control_Panel` page)
      - The CSV must follow this format:
      ```csv
      userID;email;groupID;academic year;class
      ```
    - Users can also be added directly via SQL queries:
      ```sql
-     INSERT INTO user_ (user_id, email, password, group_id, academic_year, class) 
+     INSERT INTO user_ (user_id, email, password, group_id, academic_year, class)
      VALUES ('user_id', 'email', 'hashed_password', group_id, academic_year, 'class');
-     
-     -- If the user is a professor, also add to professor table:
-     INSERT INTO professor (user_id, permission_level)
+
+     -- If the user is an instructor, also add to instructor table:
+     INSERT INTO instructor (user_id, permission_level)
      VALUES ('user_id', 'regular');
      ```
 
@@ -131,8 +136,8 @@ For the complete schema definition, see `Tables_AI_Negotiator.sql`.
    # View users
    SELECT * FROM user_;
 
-   # View professors
-   SELECT * FROM professor;
+   # View instructors
+   SELECT * FROM instructor;
 
    # View games
    SELECT * FROM game;

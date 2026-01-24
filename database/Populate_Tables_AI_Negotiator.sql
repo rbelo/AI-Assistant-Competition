@@ -1,61 +1,46 @@
 ----------------------------------------------------------------------------------------------------------------------------------------------
----------------------------------------------------------- INSERT USERS ----------------------------------------------------------------------
+----------------------------------------------------------- INSERT USERS ----------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------------------------------------------
 
--- Inserting Ricardo Almeida (for testing)
-INSERT INTO user_ (user_id, email, password, group_id, academic_year, class) 
-VALUES ('nova199317', 'ricardo.almeida2210@gmail.com', '<hashed_password_for_ricardo>', 0, 2024, 'A');
+-- Password hashes are SHA-256. Plaintext reference:
+-- admin123 -> 240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9
+-- instructor123 -> c1437a55f6e93b7049c4064af1b0920974e383a435283f5d0b0496ee4a8a47b5
+-- student123 -> 703b0a3d6ad75b649a28adde7d83c6251da457549263bc7ff45ec709b0a8448b
 
--- Inserting Carolina Paiva (for testing)
-INSERT INTO user_ (user_id, email, password, group_id, academic_year, class) 
-VALUES ('nova199318', 'carolinapaivafifi@gmail.com', '<hashed_password_for_carolina>', 0, 2024, 'A');
-
--- Inserting António Almeida (for testing)
-INSERT INTO user_ (user_id, email, password, group_id, academic_year, class) 
-VALUES ('nova199319', 'antonio.c.almeida@tecnico.ulisboa.pt', '<hashed_password_for_antonio>', 0, 2024, 'A');
-
--- Inserting Martim Penim (for testing)
-INSERT INTO user_ (user_id, email, password, group_id, academic_year, class) 
-VALUES ('nova199320', 'martim.penim@tecnico.ulisboa.pt', '<hashed_password_for_martim>', 0, 2024, 'A');
-
--- Inserting Rodrigo Belo
+-- Admin + instructors
 INSERT INTO user_ (user_id, email, password, group_id, academic_year, class)
-VALUES ('nova199032', 'rodrigo.belo@novasbe.pt', '<hashed_password_for_rodrigo>', 0, 2008, 'B');
+VALUES
+    ('admin', 'admin@rodrigobelo.com', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 0, 0, '_'),
+    ('inst001', 'instructor1@example.com', 'c1437a55f6e93b7049c4064af1b0920974e383a435283f5d0b0496ee4a8a47b5', 0, 2024, 'A'),
+    ('inst002', 'instructor2@example.com', 'c1437a55f6e93b7049c4064af1b0920974e383a435283f5d0b0496ee4a8a47b5', 0, 2024, 'B');
 
--- Inserting Lénia Mestrinho
+-- Students (class A)
 INSERT INTO user_ (user_id, email, password, group_id, academic_year, class)
-VALUES ('nova196331', 'lenia.mestrinho@novasbe.pt', '<hashed_password_for_lenia>', 0, 2000, 'A');
+VALUES
+    ('stud001', 'student1@example.com', '703b0a3d6ad75b649a28adde7d83c6251da457549263bc7ff45ec709b0a8448b', 1, 2024, 'A'),
+    ('stud002', 'student2@example.com', '703b0a3d6ad75b649a28adde7d83c6251da457549263bc7ff45ec709b0a8448b', 2, 2024, 'A'),
+    ('stud003', 'student3@example.com', '703b0a3d6ad75b649a28adde7d83c6251da457549263bc7ff45ec709b0a8448b', 3, 2024, 'A'),
+    ('stud007', 'student@rodrigobelo.com', '703b0a3d6ad75b649a28adde7d83c6251da457549263bc7ff45ec709b0a8448b', 1, 2024, 'A');
+
+-- Students (class B)
+INSERT INTO user_ (user_id, email, password, group_id, academic_year, class)
+VALUES
+    ('stud004', 'student4@example.com', '703b0a3d6ad75b649a28adde7d83c6251da457549263bc7ff45ec709b0a8448b', 1, 2024, 'B'),
+    ('stud005', 'student5@example.com', '703b0a3d6ad75b649a28adde7d83c6251da457549263bc7ff45ec709b0a8448b', 2, 2024, 'B'),
+    ('stud006', 'student6@example.com', '703b0a3d6ad75b649a28adde7d83c6251da457549263bc7ff45ec709b0a8448b', 3, 2024, 'B');
 
 ----------------------------------------------------------------------------------------------------------------------------------------------
----------------------------------------------- INSERT PROFESSORS -----------------------------------------------------------------------------
+----------------------------------------------- INSERT INSTRUCTORS ----------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------------------------------------------
 
--- Inserting Ricardo Almeida into professor's table (for testing)
-INSERT INTO professor (user_id, permission_level)
-VALUES ('nova199317', 'regular');
-
--- Inserting Carolina Paiva into professor's table (for testing)
-INSERT INTO professor (user_id, permission_level)
-VALUES ('nova199318', 'regular');
-
--- Inserting António Almeida into professor's table (for testing)
-INSERT INTO professor (user_id, permission_level)
-VALUES ('nova199319', 'regular');
-
--- Inserting Martim Penim into professor's table (for testing)
-INSERT INTO professor (user_id, permission_level) 
-VALUES ('nova199320', 'regular');
-
--- Inserting Rodrigo Belo into professor's table
-INSERT INTO professor (user_id, permission_level) 
-VALUES ('nova199032', 'master');
-
--- Inserting Lénia Mestrinho into professor's table
-INSERT INTO professor (user_id, permission_level) 
-VALUES ('nova196331', 'regular');
+INSERT INTO instructor (user_id, permission_level)
+VALUES
+    ('admin', 'admin'),
+    ('inst001', 'regular'),
+    ('inst002', 'regular');
 
 ----------------------------------------------------------------------------------------------------------------------------------------------
----------------------------------------------- INSERT GAME MODES -----------------------------------------------------------------------------
+----------------------------------------------- INSERT GAME MODES -----------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------------------------------------------
 
 -- Add game modes
@@ -63,3 +48,91 @@ INSERT INTO game_modes (mode_name, description)
 VALUES 
     ('zero_sum', 'Configuration for zero sum games'),
     ('prisoners_dilemma', 'Configuration for prisoners dilemma games');
+
+----------------------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------- INSERT GAMES ----------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------------------
+
+INSERT INTO game (
+    game_id, available, created_by, game_name, number_of_rounds, name_roles,
+    game_academic_year, game_class, password, timestamp_game_creation,
+    timestamp_submission_deadline, explanation, mode_id
+)
+VALUES
+    (
+        1, 0, 'inst001', 'Sample Zero Sum', 1, 'Buyer#_;:)Seller',
+        2024, 'A', '1234', NOW(), NOW() + INTERVAL '7 days',
+        'Negotiate the price of a used laptop. Buyer wants low price; seller wants high price.',
+        (SELECT mode_id FROM game_modes WHERE mode_name = 'zero_sum')
+    ),
+    (
+        2, 0, 'inst002', 'Sample Zero Sum', 1, 'Importer#_;:)Exporter',
+        2024, 'B', '1234', NOW(), NOW() + INTERVAL '7 days',
+        'Negotiate a shipment contract for coffee beans between importer and exporter.',
+        (SELECT mode_id FROM game_modes WHERE mode_name = 'zero_sum')
+    );
+
+----------------------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------- INSERT PLAYS -----------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------------------
+
+INSERT INTO plays (user_id, game_id)
+VALUES
+    ('stud001', 1),
+    ('stud002', 1),
+    ('stud003', 1),
+    ('stud007', 1),
+    ('stud004', 2),
+    ('stud005', 2),
+    ('stud006', 2);
+
+----------------------------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------ INSERT GAME PARAMETERS ----------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------------------
+
+-- Parameters for game 1 (stored in group_values with class = 'params')
+INSERT INTO group_values (game_id, class, group_id, minimizer_value, maximizer_value)
+VALUES
+    (1, 'params', 0, 10, 5),
+    (1, 'params', 1, 30, 15);
+
+-- Parameters for game 2
+INSERT INTO group_values (game_id, class, group_id, minimizer_value, maximizer_value)
+VALUES
+    (2, 'params', 0, 20, 8),
+    (2, 'params', 1, 40, 18);
+
+----------------------------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------ INSERT GROUP VALUES -------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------------------
+
+INSERT INTO group_values (game_id, class, group_id, minimizer_value, maximizer_value)
+VALUES
+    (1, 'A', 1, 12, 7),
+    (1, 'A', 2, 18, 9),
+    (1, 'A', 3, 22, 11),
+    (2, 'B', 1, 25, 10),
+    (2, 'B', 2, 28, 12),
+    (2, 'B', 3, 32, 14);
+
+----------------------------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------ INSERT STUDENT PROMPTS ----------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------------------
+
+INSERT INTO student_prompt (game_id, class, group_id, prompt, submitted_by)
+VALUES
+    (
+        1, 'A', 1,
+        'You are the buyer. Your reservation value is 12. Aim for a fair deal but try to stay below 10.\n\n#_;:)\n\nYou are the seller. Your reservation value is 7. Try to close above 12.',
+        'stud001'
+    ),
+    (
+        1, 'A', 2,
+        'Buyer role: keep the offer under 15 and open with 8.\n\n#_;:)\n\nSeller role: ask for 20 and do not go below 9.',
+        'stud002'
+    ),
+    (
+        2, 'B', 1,
+        'Importer: keep total contract under 25 and push for volume discounts.\n\n#_;:)\n\nExporter: target 35 and do not accept below 10.',
+        'stud004'
+    );

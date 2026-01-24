@@ -33,14 +33,36 @@ A learning platform for students to their AI agents to compete in negotiation ch
 5. Submit to competitions
 
 ### For Developers
-1. Read the [Developer Guide](documentation/DEVELOPER_GUIDE.md) for:
-   - Setup and installation
-   - Development environment
-   - Running the application
-   - Testing and contribution workflow
-2. Set up your development environment
-3. Initialize the database
-4. Run the application locally
+
+**Quick Start:**
+```bash
+# Clone and setup
+git clone <repository-url>
+cd ai-assistant-competition
+python -m venv .venv && source .venv/bin/activate
+make install-dev
+
+# Verify setup
+make check
+
+# Run the app
+make run
+```
+
+**Available Commands:**
+| Command | Description |
+|---------|-------------|
+| `make install-dev` | Install all dependencies |
+| `make test` | Run all tests |
+| `make test-unit` | Run unit tests (fast, no secrets needed) |
+| `make test-cov` | Run tests with coverage report |
+| `make lint` | Check code style |
+| `make lint-fix` | Auto-fix linting issues |
+| `make format` | Format code with Black |
+| `make check` | Run lint + tests (CI simulation) |
+| `make run` | Start Streamlit app |
+
+For detailed documentation, see the [Developer Guide](documentation/DEVELOPER_GUIDE.md).
 
 ---
 
@@ -64,9 +86,8 @@ ai-assistant-competition/
 │   ├── pages/                                   # Streamlit pages
 │   │   ├── 1_Play.py                            # Main game interface
 │   │   ├── 2_Control_Panel.py                   # Admin and configuration
-│   │   ├── 3_Profile.py                         # User profile management
-│   │   ├── 4_About.py                           # Project information
-│   │   └── 5_Playground.py                      # Bot testing interface
+│   │   ├── 3_Playground.py                      # Bot testing interface
+│   │   └── 4_Profile.py                         # User profile management
 │   ├── .streamlit/                              # Streamlit configuration
 │   │   └── secrets.toml                         # Environment variables
 │   ├── requirements.txt                         # Python dependencies
