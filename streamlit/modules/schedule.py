@@ -1,20 +1,21 @@
 import random
 
+
 def berger_schedule(teams, num_rounds):
-    
+
     # Add a dummy team if the number of teams is odd
     is_odd = len(teams) % 2 != 0
     num_teams = len(teams)
-    
+
     if is_odd:
         num_teams += 1
-        teams +=  ["Dummy"]
+        teams += ["Dummy"]
 
     # Generate the schedule
     schedule = []
     shuffled_teams = teams[:]
     random.shuffle(shuffled_teams)
-    
+
     for _ in range(num_rounds):
 
         round_matches = []
@@ -26,7 +27,7 @@ def berger_schedule(teams, num_rounds):
 
             # Avoid scheduling matches with the dummy player (if odd number of players)
             if not is_odd or (is_odd and team1 != "Dummy" and team2 != "Dummy"):
-                                round_matches.append((team1, team2))
+                round_matches.append((team1, team2))
 
         # Append the round's matchups to the schedule
         schedule.append(round_matches)

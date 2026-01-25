@@ -42,17 +42,18 @@ def render_sidebar():
 
             if submitted:
                 import hashlib
-                from modules.database_handler import authenticate_user, is_instructor, get_user_id_by_email
+
+                from modules.database_handler import authenticate_user, get_user_id_by_email, is_instructor
 
                 hashed_password = hashlib.sha256(password.encode()).hexdigest()
                 st.warning("Please wait...")
                 if authenticate_user(email, hashed_password):
-                    st.session_state['login_email'] = email
-                    st.session_state['login_password'] = password
-                    st.session_state['instructor'] = is_instructor(email)
-                    st.session_state['authenticated'] = True
+                    st.session_state["login_email"] = email
+                    st.session_state["login_password"] = password
+                    st.session_state["instructor"] = is_instructor(email)
+                    st.session_state["authenticated"] = True
                     user_id = get_user_id_by_email(email)
-                    st.session_state.update({'user_id': user_id})
+                    st.session_state.update({"user_id": user_id})
                     st.success("Login successful!")
                     st.rerun()
                 else:

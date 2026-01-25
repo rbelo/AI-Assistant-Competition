@@ -4,11 +4,11 @@ Unit tests for email_service module.
 Tests email validation and utility functions.
 """
 
-import pytest
-import sys
 import os
+import sys
 from unittest.mock import MagicMock, patch
-import importlib
+
+import pytest
 
 # Add streamlit directory to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../streamlit")))
@@ -23,20 +23,22 @@ class MockSecrets(dict):
             if isinstance(value, dict):
                 return MockSecrets(value)
             return value
-        except KeyError:
-            raise AttributeError(f"Secrets has no key '{key}'")
+        except KeyError as err:
+            raise AttributeError(f"Secrets has no key '{key}'") from err
 
 
 @pytest.fixture
 def email_service():
     """Import email_service with mocked Streamlit dependencies."""
     # Create mock secrets
-    mock_secrets = MockSecrets({
-        "database": {"url": "postgresql://test:test@localhost:5432/test_db"},
-        "drive": {"folder_id": "test_folder_id"},
-        "mail": {"email": "test@example.com", "api_key": "test_api_key"},
-        "app": {"link": "https://test-app.streamlit.app"},
-    })
+    mock_secrets = MockSecrets(
+        {
+            "database": {"url": "postgresql://test:test@localhost:5432/test_db"},
+            "drive": {"folder_id": "test_folder_id"},
+            "mail": {"email": "test@example.com", "api_key": "test_api_key"},
+            "app": {"link": "https://test-app.streamlit.app"},
+        }
+    )
 
     # Mock database handler
     mock_db = MagicMock()

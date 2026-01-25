@@ -4,11 +4,12 @@ Unit tests for drive_file_manager module.
 Tests Google Drive integration with mocked dependencies.
 """
 
-import pytest
-import sys
-import os
-import types
 import importlib
+import os
+import sys
+import types
+
+import pytest
 
 # Add project root to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))

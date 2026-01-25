@@ -1,19 +1,28 @@
-import streamlit as st
 import re
+
 import autogen
-from modules.database_handler import get_group_id_from_user_id, get_class_from_user_id, insert_playground_result, get_playground_results
-from modules.database_handler import delete_playground_result, delete_all_playground_results
-from modules.database_handler import list_user_api_keys, get_user_api_key
-from modules.negotiations import (
-    is_valid_termination,
-    compute_deal_scores,
-    build_summary_agents,
-    evaluate_deal_summary,
-    build_llm_config,
-    is_invalid_api_key_error,
+from modules.database_handler import (
+    delete_all_playground_results,
+    delete_playground_result,
+    get_class_from_user_id,
+    get_group_id_from_user_id,
+    get_playground_results,
+    get_user_api_key,
+    insert_playground_result,
+    list_user_api_keys,
 )
 from modules.negotiation_display import render_chat_summary
+from modules.negotiations import (
+    build_llm_config,
+    build_summary_agents,
+    compute_deal_scores,
+    evaluate_deal_summary,
+    is_invalid_api_key_error,
+    is_valid_termination,
+)
 from modules.sidebar import render_sidebar
+
+import streamlit as st
 
 # Set page configuration
 st.set_page_config(page_title="AI Assistant Playground", page_icon="🧪")
@@ -40,10 +49,18 @@ def clean_agent_message(agent_name_1, agent_name_2, message):
 
 
 # Function to create and run test negotiations
-def run_playground_negotiation(role1_prompt, role2_prompt, role1_name, role2_name,
-                               starting_message, num_turns, api_key, model="gpt-4o-mini",
-                               conversation_starter=None,
-                               negotiation_termination_message=NEGOTIATION_TERMINATION_MESSAGE):
+def run_playground_negotiation(
+    role1_prompt,
+    role2_prompt,
+    role1_name,
+    role2_name,
+    starting_message,
+    num_turns,
+    api_key,
+    model="gpt-4o-mini",
+    conversation_starter=None,
+    negotiation_termination_message=NEGOTIATION_TERMINATION_MESSAGE,
+):
     # Configure agents
     config_list = build_llm_config(model, api_key)
 
@@ -56,8 +73,9 @@ def run_playground_negotiation(role1_prompt, role2_prompt, role1_name, role2_nam
         llm_config=config_list,
         human_input_mode="NEVER",
         chat_messages=None,
-        system_message=role1_prompt + f" When the negotiation is finished, say {negotiation_termination_message}. This is a short conversation, you will have about {num_turns} opportunities to intervene.",
-        is_termination_msg=create_termination_check([])
+        system_message=role1_prompt
+        + f" When the negotiation is finished, say {negotiation_termination_message}. This is a short conversation, you will have about {num_turns} opportunities to intervene.",
+        is_termination_msg=create_termination_check([]),
     )
 
     role2_agent = autogen.ConversableAgent(
@@ -65,8 +83,9 @@ def run_playground_negotiation(role1_prompt, role2_prompt, role1_name, role2_nam
         llm_config=config_list,
         human_input_mode="NEVER",
         chat_messages=None,
-        system_message=role2_prompt + f" When the negotiation is finished, say {negotiation_termination_message}. This is a short conversation, you will have about {num_turns} opportunities to intervene.",
-        is_termination_msg=create_termination_check([])
+        system_message=role2_prompt
+        + f" When the negotiation is finished, say {negotiation_termination_message}. This is a short conversation, you will have about {num_turns} opportunities to intervene.",
+        is_termination_msg=create_termination_check([]),
     )
 
     # Initialize chat
@@ -86,18 +105,27 @@ def run_playground_negotiation(role1_prompt, role2_prompt, role1_name, role2_nam
     # Process chat history for display
     negotiation_text = ""
     for i in range(len(chat.chat_history)):
-        clean_msg = clean_agent_message(role1_agent.name, role2_agent.name,
-                                        chat.chat_history[i]['content'])
-        formatted_msg = chat.chat_history[i]['name'] + ': ' + clean_msg + '\n\n'
+        clean_msg = clean_agent_message(role1_agent.name, role2_agent.name, chat.chat_history[i]["content"])
+        formatted_msg = chat.chat_history[i]["name"] + ": " + clean_msg + "\n\n"
         negotiation_text += formatted_msg
 
     return negotiation_text, chat.chat_history
 
 
 # Save playground negotiation results for future reference
-def save_playground_results(user_id, class_, group_id, role1_name, role2_name,
-                            negotiation_text, summary=None, deal_value=None,
-                            score_role1=None, score_role2=None, model=None):
+def save_playground_results(
+    user_id,
+    class_,
+    group_id,
+    role1_name,
+    role2_name,
+    negotiation_text,
+    summary=None,
+    deal_value=None,
+    score_role1=None,
+    score_role2=None,
+    model=None,
+):
     return insert_playground_result(
         user_id=user_id,
         class_=class_,
@@ -115,23 +143,24 @@ def save_playground_results(user_id, class_, group_id, role1_name, role2_name,
 
 # Search and load previous playground negotiation results
 def find_playground_results(class_, group_id):
-    user_id = st.session_state.get('user_id', '')
+    user_id = st.session_state.get("user_id", "")
     return get_playground_results(user_id, class_, group_id)
 
 
 # Check if the user is authenticated
-if not st.session_state.get('authenticated', False):
+if not st.session_state.get("authenticated", False):
     st.title("AI Agent Playground")
     st.warning("Please login first to access the Playground.")
 else:
     # Get user details
-    user_id = st.session_state.get('user_id', '')
+    user_id = st.session_state.get("user_id", "")
     class_ = get_class_from_user_id(user_id)
     group_id = get_group_id_from_user_id(user_id)
 
     st.title("AI Agent Playground")
     st.write(
-        "Test and refine your AI agents in this sandbox environment before submitting them to official competitions.")
+        "Test and refine your AI agents in this sandbox environment before submitting them to official competitions."
+    )
 
     # Playground tabs
     tab1, tab2, tab3 = st.tabs(["Create Test", "My Tests", "Playground Help"])
@@ -151,14 +180,20 @@ else:
             with col1:
                 role1_name = st.text_input("Role 1 Name", value="Buyer")
                 role1_value = st.number_input("Role 1 Reservation Value", value=20)
-                role1_prompt = st.text_area("Role 1 Prompt", height=200,
-                                            value=f"You are a buyer negotiating to purchase an item. Your reservation value is {role1_value}, which means you won't pay more than this amount. Try to negotiate the lowest price possible.")
+                role1_prompt = st.text_area(
+                    "Role 1 Prompt",
+                    height=200,
+                    value=f"You are a buyer negotiating to purchase an item. Your reservation value is {role1_value}, which means you won't pay more than this amount. Try to negotiate the lowest price possible.",
+                )
 
             with col2:
                 role2_name = st.text_input("Role 2 Name", value="Seller")
                 role2_value = st.number_input("Role 2 Reservation Value", value=10)
-                role2_prompt = st.text_area("Role 2 Prompt", height=200,
-                                            value=f"You are a seller negotiating to sell an item. Your reservation value is {role2_value}, which means you won't accept less than this amount. Try to negotiate the highest price possible.")
+                role2_prompt = st.text_area(
+                    "Role 2 Prompt",
+                    height=200,
+                    value=f"You are a seller negotiating to sell an item. Your reservation value is {role2_value}, which means you won't accept less than this amount. Try to negotiate the highest price possible.",
+                )
 
             st.subheader("Negotiation Settings")
             conversation_options = [f"{role1_name} ➡ {role2_name}", f"{role2_name} ➡ {role1_name}"]
@@ -181,9 +216,7 @@ else:
                 key="playground_model",
             )
             saved_keys = list_user_api_keys(user_id)
-            key_options = {
-                key["key_name"]: key["key_id"] for key in saved_keys
-            }
+            key_options = {key["key_name"]: key["key_id"] for key in saved_keys}
             has_keys = bool(key_options)
             selected_key_id = None
             if has_keys:
@@ -209,10 +242,16 @@ else:
             with st.spinner("Running negotiation test..."):
                 try:
                     negotiation_text, chat_history = run_playground_negotiation(
-                        role1_prompt, role2_prompt, role1_name, role2_name,
-                        starting_message, num_turns, resolved_api_key, model,
+                        role1_prompt,
+                        role2_prompt,
+                        role1_name,
+                        role2_name,
+                        starting_message,
+                        num_turns,
+                        resolved_api_key,
+                        model,
                         conversation_starter.split(" ➡ ")[0].strip(),
-                        NEGOTIATION_TERMINATION_MESSAGE
+                        NEGOTIATION_TERMINATION_MESSAGE,
                     )
                     summary_text = ""
                     deal_value = None
@@ -265,9 +304,17 @@ else:
                     # Save results if requested
                     if save_results:
                         result_id = save_playground_results(
-                            user_id, class_, group_id, role1_name, role2_name,
-                            negotiation_text, summary_text, deal_value,
-                            score_role1, score_role2, model=model
+                            user_id,
+                            class_,
+                            group_id,
+                            role1_name,
+                            role2_name,
+                            negotiation_text,
+                            summary_text,
+                            deal_value,
+                            score_role1,
+                            score_role2,
+                            model=model,
                         )
                         if result_id:
                             st.success(f"Results saved successfully! Reference ID: {result_id}")
@@ -287,6 +334,7 @@ else:
         previous_tests = find_playground_results(class_, group_id)
 
         if previous_tests:
+
             @st.dialog("Clear all tests")
             def confirm_clear_all():
                 st.warning("This will permanently delete all your saved tests.")

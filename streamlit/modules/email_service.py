@@ -1,12 +1,16 @@
-import streamlit as st
-import smtplib
-import re
-import jwt
-import os
 import datetime
-from email.mime.text import MIMEText
+import os
+import re
+import smtplib
 from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
+import jwt
+
+import streamlit as st
+
 from .database_handler import exists_user
+
 
 def get_mail():
     try:
@@ -14,11 +18,13 @@ def get_mail():
     except (KeyError, AttributeError):
         return None
 
+
 def get_mail_api_pass():
     try:
         return st.secrets["mail"]["api_key"]
     except (KeyError, AttributeError):
         return None
+
 
 def get_app_link():
     # Auto-detect local development environment
@@ -35,12 +41,14 @@ def get_app_link():
     except (KeyError, AttributeError):
         return None
 
+
 # Validate email format (lowercase only)
 def valid_email(email):
     if any(char.isupper() for char in email):
         return False
-    email_pattern = r'^[a-z0-9_.+-]+@[a-z0-9-]+\.[a-z0-9-.]+$'
+    email_pattern = r"^[a-z0-9_.+-]+@[a-z0-9-]+\.[a-z0-9-.]+$"
     return bool(re.match(email_pattern, email))
+
 
 # Initiate set password
 # Returns: True if email sent successfully, False if email failed, None if user not found
@@ -50,17 +58,18 @@ def set_password(email):
         return send_set_password_email(email, set_password_link)
     return None
 
+
 # Send email with set password link
 def send_set_password_email(email, set_password_link):
     message = MIMEMultipart()
-    message['Subject'] = "AI-Assistant Competition: Set Your Password"
-    message['From'] = get_mail()
-    message['To'] = email
-    body = MIMEText(f"Click here to set your password: {set_password_link}", 'plain')
+    message["Subject"] = "AI-Assistant Competition: Set Your Password"
+    message["From"] = get_mail()
+    message["To"] = email
+    body = MIMEText(f"Click here to set your password: {set_password_link}", "plain")
     message.attach(body)
 
     try:
-        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+        with smtplib.SMTP("smtp.gmail.com", 587) as server:
             server.starttls()
             server.login(get_mail(), get_mail_api_pass())
             server.sendmail(get_mail(), email, message.as_string())
@@ -70,20 +79,23 @@ def send_set_password_email(email, set_password_link):
         print(f"Error sending email: {e}")
         return False
 
+
 # Secret key for JWT
 SECRET_KEY = str(os.getenv("SECRET_KEY"))
+
 
 def get_base_url():
     return get_app_link()
 
+
 # Generate set password link with JWT
 def generate_set_password_link(email):
     expiration_time = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)
-    payload = {'email': email, 'exp': expiration_time}
+    payload = {"email": email, "exp": expiration_time}
     token = jwt.encode(payload, SECRET_KEY, algorithm="HS256")
-    
+
     if isinstance(token, bytes):
-        token = token.decode('utf-8')
-    
+        token = token.decode("utf-8")
+
     set_password_url = f"{get_base_url()}?set_password={token}"
     return set_password_url

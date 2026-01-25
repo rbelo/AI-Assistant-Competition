@@ -17,9 +17,7 @@ import pytest
 class TestRunSimulation:
     """Test the run simulation flow for instructors."""
 
-    def test_run_simulation_completes(
-        self, instructor_page, simulation_test_game, openai_api_key, database_url
-    ):
+    def test_run_simulation_completes(self, instructor_page, simulation_test_game, openai_api_key, database_url):
         """Test that an instructor can run a simulation.
 
         Steps:
@@ -80,17 +78,13 @@ class TestRunSimulation:
 
         # Fill out the simulation form
         # API Key (select saved key)
-        api_key_select = page.locator("[data-testid='stSelectbox']").filter(
-            has_text="API Key"
-        )
+        api_key_select = page.locator("[data-testid='stSelectbox']").filter(has_text="API Key")
         api_key_select.locator("div[data-baseweb='select']").click()
         page.get_by_role("option", name="E2E Key").click()
 
         # Model - use gpt-4o-mini for lower cost and faster response
         # The selectbox should default to gpt-4o-mini, but let's ensure
-        model_select = page.locator("[data-testid='stSelectbox']").filter(
-            has_text="OpenAI Model"
-        )
+        model_select = page.locator("[data-testid='stSelectbox']").filter(has_text="OpenAI Model")
         model_select.locator("div[data-baseweb='select']").click()
         page.get_by_role("option", name="gpt-4o-mini").click()
 
@@ -138,10 +132,18 @@ class TestRunSimulation:
                     pytest.fail("Form validation failed - missing required fields")
                 elif attribute_error:
                     # Get more details about the error
-                    error_text = page.locator(".stException").inner_text() if page.locator(".stException").count() > 0 else "AttributeError occurred"
+                    error_text = (
+                        page.locator(".stException").inner_text()
+                        if page.locator(".stException").count() > 0
+                        else "AttributeError occurred"
+                    )
                     pytest.fail(f"AttributeError during simulation: {error_text[:500]}")
                 elif exception_visible:
-                    error_text = page.locator(".stException").inner_text() if page.locator(".stException").count() > 0 else "Exception occurred"
+                    error_text = (
+                        page.locator(".stException").inner_text()
+                        if page.locator(".stException").count() > 0
+                        else "Exception occurred"
+                    )
                     pytest.fail(f"Exception during simulation: {error_text[:500]}")
                 else:
                     pytest.fail("Simulation did not complete within timeout")
@@ -155,8 +157,6 @@ class TestRunSimulation:
                     (game_data["game_id"],),
                 )
                 chat_count = cur.fetchone()[0]
-                assert (
-                    chat_count > 0
-                ), f"No negotiation chats stored in database for game {game_data['game_id']}"
+                assert chat_count > 0, f"No negotiation chats stored in database for game {game_data['game_id']}"
         finally:
             conn.close()

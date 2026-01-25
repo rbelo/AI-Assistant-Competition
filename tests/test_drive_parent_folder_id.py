@@ -1,10 +1,10 @@
-import sys
-import types
 import importlib
 import os
+import sys
+import types
 
 # Add the project root to the Python path so imports from streamlit work
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
 def load_drive_file_manager():
@@ -19,8 +19,10 @@ def load_drive_file_manager():
     sys.modules["googleapiclient.discovery"] = discovery
 
     http = types.ModuleType("googleapiclient.http")
+
     class _Dummy:  # Minimal placeholders
         pass
+
     http.MediaIoBaseUpload = _Dummy
     http.MediaIoBaseDownload = _Dummy
     sys.modules["googleapiclient.http"] = http

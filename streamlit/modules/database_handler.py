@@ -1,12 +1,15 @@
 import os
-import streamlit as st
-import psycopg2
+
 import pandas as pd
-from flask import Flask
+import psycopg2
 from cryptography.fernet import Fernet, InvalidToken
+from flask import Flask
+
+import streamlit as st
 
 app = Flask(__name__)
-app.secret_key = 'key'
+app.secret_key = "key"
+
 
 # Helper to get the database connection string at runtime
 def get_db_connection_string():
@@ -38,7 +41,7 @@ def _identity_decorator(func):
     return func
 
 
-_cache_decorator = getattr(st, 'cache_resource', _identity_decorator)
+_cache_decorator = getattr(st, "cache_resource", _identity_decorator)
 
 
 @_cache_decorator
@@ -67,7 +70,7 @@ def get_connection():
                 return conn
             except psycopg2.OperationalError:
                 # Connection died, clear cache and get new one
-                if hasattr(st, 'cache_resource'):
+                if hasattr(st, "cache_resource"):
                     st.cache_resource.clear()
                 return _get_cached_connection()
         return conn
@@ -84,7 +87,7 @@ def populate_plays_table(game_id, game_academic_year, game_class):
         return False
     try:
         with conn.cursor() as cur:
-            if game_class == '_':
+            if game_class == "_":
                 query = """
                 SELECT u.user_id
                 FROM user_ AS u LEFT JOIN instructor AS i
@@ -92,8 +95,7 @@ def populate_plays_table(game_id, game_academic_year, game_class):
                 WHERE i.user_id IS NULL AND u.academic_year = %(param1)s;
 
             """
-                cur.execute(query, {'param1': game_academic_year})
-
+                cur.execute(query, {"param1": game_academic_year})
 
             else:
                 query = """
@@ -102,7 +104,7 @@ def populate_plays_table(game_id, game_academic_year, game_class):
                     ON u.user_id = i.user_id
                 WHERE i.user_id IS NULL AND u.academic_year = %(param1)s AND u.class = %(param2)s;
             """
-                cur.execute(query, {'param1': game_academic_year, 'param2': game_class})
+                cur.execute(query, {"param1": game_academic_year, "param2": game_class})
 
             students = cur.fetchall()
 
@@ -121,7 +123,7 @@ def populate_plays_table(game_id, game_academic_year, game_class):
                     VALUES (%(param1)s, %(param2)s);
                 """
                 for student in students:
-                    cur.execute(query, {'param1': student[0], 'param2': game_id})
+                    cur.execute(query, {"param1": student[0], "param2": game_id})
 
                 conn.commit()
                 return True
@@ -131,6 +133,7 @@ def populate_plays_table(game_id, game_academic_year, game_class):
     except Exception:
         conn.rollback()
         return False
+
 
 # Function to retrieve academic year and class combinations
 def get_academic_year_class_combinations():
@@ -167,6 +170,7 @@ def get_academic_year_class_combinations():
     except Exception:
         return False
 
+
 # Function to get a game using the game_id
 def get_game_by_id(game_id):
     conn = get_connection()
@@ -199,12 +203,13 @@ def get_game_by_id(game_id):
                     "password": result[7],
                     "timestamp_game_creation": result[8],
                     "timestamp_submission_deadline": result[9],
-                    "explanation": result[10]
+                    "explanation": result[10],
                 }
             return False
 
     except Exception:
         return False
+
 
 # Function to get all unique academic years or games linked with a specific academic year
 def fetch_games_data(academic_year=None, get_academic_years=False):
@@ -231,7 +236,7 @@ def fetch_games_data(academic_year=None, get_academic_years=False):
                 ORDER BY game_id DESC;
             """
 
-            cur.execute(query2, {'param1': academic_year})
+            cur.execute(query2, {"param1": academic_year})
 
             games_data = cur.fetchall()
 
@@ -248,14 +253,15 @@ def fetch_games_data(academic_year=None, get_academic_years=False):
                     "password": row[8],
                     "timestamp_game_creation": row[9],
                     "timestamp_submission_deadline": row[10],
-                    "explanation": row[11] if len(row) > 11 else None
+                    "explanation": row[11] if len(row) > 11 else None,
                 }
                 for row in games_data
             ]
 
     except Exception:
         return []
-    
+
+
 # Function to fetch current (or past) games data by user_id
 def fetch_current_games_data_by_user_id(sign, user_id):
     conn = get_connection()
@@ -272,7 +278,7 @@ def fetch_current_games_data_by_user_id(sign, user_id):
                 AND CURRENT_TIMESTAMP {sign} g.timestamp_submission_deadline)
                 ORDER BY g.game_id DESC; """
 
-            cur.execute(query , {'param1': user_id})
+            cur.execute(query, {"param1": user_id})
 
             games_data = cur.fetchall()
             if games_data:
@@ -290,7 +296,7 @@ def fetch_current_games_data_by_user_id(sign, user_id):
                         "password": row[8],
                         "timestamp_game_creation": row[9],
                         "timestamp_submission_deadline": row[10],
-                        "explanation": row[11] if len(row) > 11 else None
+                        "explanation": row[11] if len(row) > 11 else None,
                     }
                     games.append(game)
 
@@ -299,7 +305,8 @@ def fetch_current_games_data_by_user_id(sign, user_id):
 
     except Exception:
         return []
-    
+
+
 # Function to retrieve the last gameID from the database and increment it
 def get_next_game_id():
     conn = get_connection()
@@ -318,9 +325,22 @@ def get_next_game_id():
 
     except Exception:
         return False
-    
+
+
 # Function to update game details in the database
-def update_game_in_db(game_id, created_by, game_name, number_of_rounds, name_roles, game_academic_year, game_class, password, timestamp_game_creation, submission_deadline, explanation):
+def update_game_in_db(
+    game_id,
+    created_by,
+    game_name,
+    number_of_rounds,
+    name_roles,
+    game_academic_year,
+    game_class,
+    password,
+    timestamp_game_creation,
+    submission_deadline,
+    explanation,
+):
     conn = get_connection()
     if not conn:
         return False
@@ -335,19 +355,22 @@ def update_game_in_db(game_id, created_by, game_name, number_of_rounds, name_rol
                 WHERE game_id = %(param11)s;
             """
 
-            cur.execute(query1, {
-                'param1': created_by,
-                'param2': game_name,
-                'param3': number_of_rounds,
-                'param4': name_roles,
-                'param5': game_academic_year,
-                'param6': game_class,
-                'param7': password,
-                'param8': timestamp_game_creation,
-                'param9': submission_deadline,
-                'param10': explanation,
-                'param11': game_id
-            })
+            cur.execute(
+                query1,
+                {
+                    "param1": created_by,
+                    "param2": game_name,
+                    "param3": number_of_rounds,
+                    "param4": name_roles,
+                    "param5": game_academic_year,
+                    "param6": game_class,
+                    "param7": password,
+                    "param8": timestamp_game_creation,
+                    "param9": submission_deadline,
+                    "param10": explanation,
+                    "param11": game_id,
+                },
+            )
 
             query2 = """
                 SELECT *
@@ -363,7 +386,8 @@ def update_game_in_db(game_id, created_by, game_name, number_of_rounds, name_rol
     except Exception:
         conn.rollback()
         return False
-    
+
+
 # Function to update access of negotiation chats to students
 def update_access_to_chats(access, game_id):
     conn = get_connection()
@@ -378,10 +402,7 @@ def update_access_to_chats(access, game_id):
                 WHERE game_id = %(param2)s;
             """
 
-            cur.execute(query1, {
-                'param1': access,
-                'param2': game_id
-            })
+            cur.execute(query1, {"param1": access, "param2": game_id})
 
             query2 = """
                 SELECT *
@@ -398,8 +419,23 @@ def update_access_to_chats(access, game_id):
         conn.rollback()
         return False
 
+
 # Function to store game details in the database
-def store_game_in_db(game_id, available, created_by, game_name, number_of_rounds, name_roles, game_academic_year, game_class, password, timestamp_game_creation, submission_deadline, explanation, game_type="zero_sum"):
+def store_game_in_db(
+    game_id,
+    available,
+    created_by,
+    game_name,
+    number_of_rounds,
+    name_roles,
+    game_academic_year,
+    game_class,
+    password,
+    timestamp_game_creation,
+    submission_deadline,
+    explanation,
+    game_type="zero_sum",
+):
     conn = get_connection()
     if not conn:
         return False
@@ -409,7 +445,7 @@ def store_game_in_db(game_id, available, created_by, game_name, number_of_rounds
             query_mode = """
                 SELECT mode_id FROM game_modes WHERE mode_name = %(mode)s;
             """
-            cur.execute(query_mode, {'mode': game_type})
+            cur.execute(query_mode, {"mode": game_type})
             mode_result = cur.fetchone()
 
             if not mode_result:
@@ -419,10 +455,7 @@ def store_game_in_db(game_id, available, created_by, game_name, number_of_rounds
                     VALUES (%(mode)s, %(desc)s)
                     RETURNING mode_id;
                 """
-                cur.execute(query_insert_mode, {
-                    'mode': game_type,
-                    'desc': f'Configuration for {game_type} games'
-                })
+                cur.execute(query_insert_mode, {"mode": game_type, "desc": f"Configuration for {game_type} games"})
                 mode_id = cur.fetchone()[0]
             else:
                 mode_id = mode_result[0]
@@ -436,21 +469,24 @@ def store_game_in_db(game_id, available, created_by, game_name, number_of_rounds
                         %(param7)s, %(param8)s, %(param9)s, %(param10)s, %(param11)s, %(param12)s, %(param13)s);
             """
 
-            cur.execute(query, {
-                'param1': game_id,
-                'param2': available,
-                'param3': created_by,
-                'param4': game_name,
-                'param5': number_of_rounds,
-                'param6': name_roles,
-                'param7': game_academic_year,
-                'param8': game_class,
-                'param9': password,
-                'param10': timestamp_game_creation,
-                'param11': submission_deadline,
-                'param12': explanation,
-                'param13': mode_id
-            })
+            cur.execute(
+                query,
+                {
+                    "param1": game_id,
+                    "param2": available,
+                    "param3": created_by,
+                    "param4": game_name,
+                    "param5": number_of_rounds,
+                    "param6": name_roles,
+                    "param7": game_academic_year,
+                    "param8": game_class,
+                    "param9": password,
+                    "param10": timestamp_game_creation,
+                    "param11": submission_deadline,
+                    "param12": explanation,
+                    "param13": mode_id,
+                },
+            )
 
             conn.commit()
             return True
@@ -459,7 +495,8 @@ def store_game_in_db(game_id, available, created_by, game_name, number_of_rounds
         conn.rollback()
         print(f"Error in store_game_in_db: {str(e)}")
         return False
-    
+
+
 # Function to get the group id of the user_id
 def get_group_id_from_user_id(user_id):
     conn = get_connection()
@@ -470,13 +507,14 @@ def get_group_id_from_user_id(user_id):
 
             query = "SELECT group_id FROM user_ WHERE user_id = %(param1)s;"
 
-            cur.execute(query, {'param1': user_id})
+            cur.execute(query, {"param1": user_id})
             group_id = cur.fetchone()[0]
 
             return group_id
 
     except Exception:
         return False
+
 
 # Function to get the academic_year of the user_id
 def get_academic_year_from_user_id(user_id):
@@ -488,13 +526,14 @@ def get_academic_year_from_user_id(user_id):
 
             query = "SELECT academic_year FROM user_ WHERE user_id = %(param1)s;"
 
-            cur.execute(query, {'param1': user_id})
+            cur.execute(query, {"param1": user_id})
             academic_year = cur.fetchone()[0]
 
             return academic_year
 
     except Exception:
         return False
+
 
 # Function to get the class of the user_id
 def get_class_from_user_id(user_id):
@@ -506,13 +545,14 @@ def get_class_from_user_id(user_id):
 
             query = "SELECT class FROM user_ WHERE user_id = %(param1)s;"
 
-            cur.execute(query, {'param1': user_id})
+            cur.execute(query, {"param1": user_id})
             group_id = cur.fetchone()[0]
 
             return group_id
 
     except Exception:
         return False
+
 
 # Function to remove a student from the database
 def remove_student(user_id):
@@ -523,10 +563,10 @@ def remove_student(user_id):
         with conn.cursor() as cur:
 
             query = "DELETE FROM plays WHERE user_id = %(param1)s;"
-            cur.execute(query, {'param1': user_id})
+            cur.execute(query, {"param1": user_id})
 
             query = "DELETE FROM user_ WHERE user_id = %(param1)s;"
-            cur.execute(query, {'param1': user_id})
+            cur.execute(query, {"param1": user_id})
 
             conn.commit()
             return True
@@ -534,6 +574,7 @@ def remove_student(user_id):
     except Exception:
         conn.rollback()
         return False
+
 
 # Function to fetch student data from the database
 def get_students_from_db():
@@ -557,13 +598,18 @@ def get_students_from_db():
             # If data exists, create a DataFrame
             if rows:
                 # Convert the result set into a pandas DataFrame
-                df = pd.DataFrame(rows, columns=["user_id", "email", "group_id", "academic_year", "class", "timestamp_user"])
+                df = pd.DataFrame(
+                    rows, columns=["user_id", "email", "group_id", "academic_year", "class", "timestamp_user"]
+                )
                 return df
             else:
-                return pd.DataFrame(columns=["user_id", "email", "group_id", "academic_year", "class", "timestamp_user"])
+                return pd.DataFrame(
+                    columns=["user_id", "email", "group_id", "academic_year", "class", "timestamp_user"]
+                )
 
     except Exception:
         return False
+
 
 # Function to insert email and into the user table
 def insert_student_data(user_id, email, temp_password, group_id, academic_year, class_):
@@ -573,12 +619,14 @@ def insert_student_data(user_id, email, temp_password, group_id, academic_year, 
     try:
         with conn.cursor() as cur:
 
-            print(f"User ID: {user_id}, Email: {email}, Temp Password: {temp_password}, Group ID: {group_id}, Academic Year: {academic_year}, Class: {class_}")
+            print(
+                f"User ID: {user_id}, Email: {email}, Temp Password: {temp_password}, Group ID: {group_id}, Academic Year: {academic_year}, Class: {class_}"
+            )
 
             # Check if user already exists
             query = "SELECT EXISTS(SELECT 1 FROM user_ WHERE user_id = %(param1)s);"
 
-            cur.execute(query, {'param1': user_id})
+            cur.execute(query, {"param1": user_id})
 
             exists = cur.fetchone()[0]
 
@@ -591,14 +639,17 @@ def insert_student_data(user_id, email, temp_password, group_id, academic_year, 
                 VALUES (%(param1)s, %(param2)s, %(param3)s, %(param4)s, %(param5)s, %(param6)s);
             """
 
-            cur.execute(query, {
-                'param1': user_id,
-                'param2': email,
-                'param3': temp_password,
-                'param4': group_id,
-                'param5': academic_year,
-                'param6': class_
-            })
+            cur.execute(
+                query,
+                {
+                    "param1": user_id,
+                    "param2": email,
+                    "param3": temp_password,
+                    "param4": group_id,
+                    "param5": academic_year,
+                    "param6": class_,
+                },
+            )
 
             conn.commit()
             return True
@@ -607,8 +658,20 @@ def insert_student_data(user_id, email, temp_password, group_id, academic_year, 
         conn.rollback()
         return False
 
+
 # Function to insert round data into the 'round' table
-def insert_round_data(game_id, round_number, group1_class, group1_id, group2_class, group2_id, score_team1_role1, score_team2_role2, score_team1_role2, score_team2_role1):
+def insert_round_data(
+    game_id,
+    round_number,
+    group1_class,
+    group1_id,
+    group2_class,
+    group2_id,
+    score_team1_role1,
+    score_team2_role2,
+    score_team1_role2,
+    score_team2_role1,
+):
     conn = get_connection()
     if not conn:
         return False
@@ -620,18 +683,21 @@ def insert_round_data(game_id, round_number, group1_class, group1_id, group2_cla
                 VALUES (%(param1)s, %(param2)s, %(param3)s, %(param4)s, %(param5)s, %(param6)s, %(param7)s, %(param8)s, %(param9)s, %(param10)s);
             """
 
-            cur.execute(query, {
-                'param1': game_id,
-                'param2': round_number,
-                'param3': group1_class,
-                'param4': group1_id,
-                'param5': group2_class,
-                'param6': group2_id,
-                'param7': score_team1_role1,
-                'param8': score_team2_role2,
-                'param9': score_team1_role2,
-                'param10': score_team2_role1,
-            })
+            cur.execute(
+                query,
+                {
+                    "param1": game_id,
+                    "param2": round_number,
+                    "param3": group1_class,
+                    "param4": group1_id,
+                    "param5": group2_class,
+                    "param6": group2_id,
+                    "param7": score_team1_role1,
+                    "param8": score_team2_role2,
+                    "param9": score_team1_role2,
+                    "param10": score_team2_role1,
+                },
+            )
 
             conn.commit()
             return True
@@ -639,6 +705,7 @@ def insert_round_data(game_id, round_number, group1_class, group1_id, group2_cla
     except Exception:
         conn.rollback()
         return False
+
 
 # Function to get the round information of a specific game from a specific game
 def get_round_data(game_id):
@@ -648,12 +715,10 @@ def get_round_data(game_id):
     try:
         with conn.cursor() as cur:
 
-            query = '''SELECT round_number, group1_class, group1_id, group2_class, group2_id, score_team1_role1, score_team2_role2, score_team1_role2, score_team2_role1
-                       FROM round WHERE game_id=%(param1)s;'''
+            query = """SELECT round_number, group1_class, group1_id, group2_class, group2_id, score_team1_role1, score_team2_role2, score_team1_role2, score_team2_role1
+                       FROM round WHERE game_id=%(param1)s;"""
 
-            cur.execute(query,{
-                'param1': game_id
-            })
+            cur.execute(query, {"param1": game_id})
 
             round_data = cur.fetchall()
 
@@ -661,6 +726,7 @@ def get_round_data(game_id):
 
     except Exception:
         return False
+
 
 # Function to store a negotiation chat transcript
 def insert_negotiation_chat(
@@ -679,13 +745,11 @@ def insert_negotiation_chat(
         return False
     try:
         with conn.cursor() as cur:
-            cur.execute(
-                """
+            cur.execute("""
                 SELECT column_name
                 FROM information_schema.columns
                 WHERE table_name = 'negotiation_chat';
-                """
-            )
+                """)
             columns = {row[0] for row in cur.fetchall()}
 
             insert_cols = [
@@ -698,13 +762,13 @@ def insert_negotiation_chat(
                 "transcript",
             ]
             values = {
-                'game_id': game_id,
-                'round_number': round_number,
-                'group1_class': group1_class,
-                'group1_id': group1_id,
-                'group2_class': group2_class,
-                'group2_id': group2_id,
-                'transcript': transcript,
+                "game_id": game_id,
+                "round_number": round_number,
+                "group1_class": group1_class,
+                "group1_id": group1_id,
+                "group2_class": group2_class,
+                "group2_id": group2_id,
+                "transcript": transcript,
             }
 
             update_cols = ["transcript = EXCLUDED.transcript"]
@@ -737,6 +801,7 @@ def insert_negotiation_chat(
         conn.rollback()
         return False
 
+
 # Function to retrieve a negotiation chat transcript
 def get_negotiation_chat(game_id, round_number, group1_class, group1_id, group2_class, group2_id):
     conn = get_connection()
@@ -751,14 +816,17 @@ def get_negotiation_chat(game_id, round_number, group1_class, group1_id, group2_
                 AND group1_class = %(param3)s AND group1_id = %(param4)s
                 AND group2_class = %(param5)s AND group2_id = %(param6)s;
             """
-            cur.execute(query, {
-                'param1': game_id,
-                'param2': round_number,
-                'param3': group1_class,
-                'param4': group1_id,
-                'param5': group2_class,
-                'param6': group2_id
-            })
+            cur.execute(
+                query,
+                {
+                    "param1": game_id,
+                    "param2": round_number,
+                    "param3": group1_class,
+                    "param4": group1_id,
+                    "param5": group2_class,
+                    "param6": group2_id,
+                },
+            )
 
             row = cur.fetchone()
             return row[0] if row else None
@@ -772,13 +840,11 @@ def get_negotiation_chat_details(game_id, round_number, group1_class, group1_id,
         return None
     try:
         with conn.cursor() as cur:
-            cur.execute(
-                """
+            cur.execute("""
                 SELECT column_name
                 FROM information_schema.columns
                 WHERE table_name = 'negotiation_chat';
-                """
-            )
+                """)
             columns = {row[0] for row in cur.fetchall()}
             select_cols = ["transcript"]
             if "summary" in columns:
@@ -793,14 +859,17 @@ def get_negotiation_chat_details(game_id, round_number, group1_class, group1_id,
                 AND group1_class = %(param3)s AND group1_id = %(param4)s
                 AND group2_class = %(param5)s AND group2_id = %(param6)s;
             """
-            cur.execute(query, {
-                'param1': game_id,
-                'param2': round_number,
-                'param3': group1_class,
-                'param4': group1_id,
-                'param5': group2_class,
-                'param6': group2_id,
-            })
+            cur.execute(
+                query,
+                {
+                    "param1": game_id,
+                    "param2": round_number,
+                    "param3": group1_class,
+                    "param4": group1_id,
+                    "param5": group2_class,
+                    "param6": group2_id,
+                },
+            )
             row = cur.fetchone()
             if not row:
                 return None
@@ -830,8 +899,7 @@ def upsert_game_simulation_params(
         return False
     try:
         with conn.cursor() as cur:
-            cur.execute(
-                """
+            cur.execute("""
                 CREATE TABLE IF NOT EXISTS game_simulation_params (
                     game_id INT PRIMARY KEY,
                     model TEXT NOT NULL,
@@ -844,8 +912,7 @@ def upsert_game_simulation_params(
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (game_id) REFERENCES game(game_id) ON DELETE CASCADE
                 );
-                """
-            )
+                """)
             query = """
                 INSERT INTO game_simulation_params (
                     game_id,
@@ -880,16 +947,19 @@ def upsert_game_simulation_params(
                     summary_termination_message = EXCLUDED.summary_termination_message,
                     updated_at = CURRENT_TIMESTAMP;
             """
-            cur.execute(query, {
-                'game_id': game_id,
-                'model': model,
-                'conversation_order': conversation_order,
-                'starting_message': starting_message,
-                'num_turns': num_turns,
-                'negotiation_termination_message': negotiation_termination_message,
-                'summary_prompt': summary_prompt,
-                'summary_termination_message': summary_termination_message,
-            })
+            cur.execute(
+                query,
+                {
+                    "game_id": game_id,
+                    "model": model,
+                    "conversation_order": conversation_order,
+                    "starting_message": starting_message,
+                    "num_turns": num_turns,
+                    "negotiation_termination_message": negotiation_termination_message,
+                    "summary_prompt": summary_prompt,
+                    "summary_termination_message": summary_termination_message,
+                },
+            )
             conn.commit()
             return True
     except Exception as e:
@@ -905,8 +975,7 @@ def get_game_simulation_params(game_id):
         return None
     try:
         with conn.cursor() as cur:
-            cur.execute(
-                """
+            cur.execute("""
                 CREATE TABLE IF NOT EXISTS game_simulation_params (
                     game_id INT PRIMARY KEY,
                     model TEXT NOT NULL,
@@ -919,15 +988,14 @@ def get_game_simulation_params(game_id):
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (game_id) REFERENCES game(game_id) ON DELETE CASCADE
                 );
-                """
-            )
+                """)
             query = """
                 SELECT model, conversation_order, starting_message, num_turns,
                        negotiation_termination_message, summary_prompt, summary_termination_message
                 FROM game_simulation_params
                 WHERE game_id = %(game_id)s;
             """
-            cur.execute(query, {'game_id': game_id})
+            cur.execute(query, {"game_id": game_id})
             row = cur.fetchone()
             if not row:
                 return None
@@ -956,7 +1024,7 @@ def delete_negotiation_chats(game_id):
                 DELETE FROM negotiation_chat
                 WHERE game_id = %(game_id)s;
             """
-            cur.execute(query, {'game_id': game_id})
+            cur.execute(query, {"game_id": game_id})
             conn.commit()
             return True
     except Exception as e:
@@ -965,16 +1033,26 @@ def delete_negotiation_chats(game_id):
         return False
 
 
-def insert_playground_result(user_id, class_, group_id, role1_name, role2_name, transcript,
-                             summary=None, deal_value=None, score_role1=None, score_role2=None, model=None):
+def insert_playground_result(
+    user_id,
+    class_,
+    group_id,
+    role1_name,
+    role2_name,
+    transcript,
+    summary=None,
+    deal_value=None,
+    score_role1=None,
+    score_role2=None,
+    model=None,
+):
     """Store a playground negotiation transcript."""
     conn = get_connection()
     if not conn:
         return None
     try:
         with conn.cursor() as cur:
-            cur.execute(
-                """
+            cur.execute("""
                 CREATE TABLE IF NOT EXISTS playground_result (
                     id SERIAL PRIMARY KEY,
                     user_id VARCHAR(255) NOT NULL,
@@ -990,33 +1068,28 @@ def insert_playground_result(user_id, class_, group_id, role1_name, role2_name, 
                     score_role2 FLOAT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
-                """
-            )
-            cur.execute(
-                """
+                """)
+            cur.execute("""
                 SELECT column_name
                 FROM information_schema.columns
                 WHERE table_name = 'playground_result';
-                """
-            )
+                """)
             columns = {row[0] for row in cur.fetchall()}
             if "model" not in columns:
-                cur.execute(
-                    """
+                cur.execute("""
                     ALTER TABLE playground_result
                     ADD COLUMN model TEXT;
-                    """
-                )
+                    """)
                 columns.add("model")
 
             insert_cols = ["user_id", "class", "group_id", "role1_name", "role2_name", "transcript"]
             values = {
-                'user_id': user_id,
-                'class': class_,
-                'group_id': group_id,
-                'role1_name': role1_name,
-                'role2_name': role2_name,
-                'transcript': transcript,
+                "user_id": user_id,
+                "class": class_,
+                "group_id": group_id,
+                "role1_name": role1_name,
+                "role2_name": role2_name,
+                "transcript": transcript,
             }
 
             if "summary" in columns:
@@ -1062,9 +1135,9 @@ def insert_playground_result(user_id, class_, group_id, role1_name, role2_name, 
                 WHERE id IN (SELECT id FROM ranked WHERE rn > 20);
                 """,
                 {
-                    'user_id': user_id,
-                    'class': class_,
-                    'group_id': group_id,
+                    "user_id": user_id,
+                    "class": class_,
+                    "group_id": group_id,
                 },
             )
             conn.commit()
@@ -1082,8 +1155,7 @@ def get_playground_results(user_id, class_, group_id, limit=20):
         return []
     try:
         with conn.cursor() as cur:
-            cur.execute(
-                """
+            cur.execute("""
                 CREATE TABLE IF NOT EXISTS playground_result (
                     id SERIAL PRIMARY KEY,
                     user_id VARCHAR(255) NOT NULL,
@@ -1098,15 +1170,12 @@ def get_playground_results(user_id, class_, group_id, limit=20):
                     score_role2 FLOAT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
-                """
-            )
-            cur.execute(
-                """
+                """)
+            cur.execute("""
                 SELECT column_name
                 FROM information_schema.columns
                 WHERE table_name = 'playground_result';
-                """
-            )
+                """)
             columns = {row[0] for row in cur.fetchall()}
             select_cols = ["id", "role1_name", "role2_name", "transcript"]
             if "summary" in columns:
@@ -1130,32 +1199,38 @@ def get_playground_results(user_id, class_, group_id, limit=20):
                 ORDER BY created_at DESC
                 LIMIT %(limit)s;
             """
-            cur.execute(query, {
-                'user_id': user_id,
-                'class': class_,
-                'group_id': group_id,
-                'limit': limit,
-            })
+            cur.execute(
+                query,
+                {
+                    "user_id": user_id,
+                    "class": class_,
+                    "group_id": group_id,
+                    "limit": limit,
+                },
+            )
             rows = cur.fetchall()
             results = []
             for row in rows:
                 row_data = dict(zip(select_cols, row))
-                results.append({
-                    "id": row_data.get("id"),
-                    "role1_name": row_data.get("role1_name"),
-                    "role2_name": row_data.get("role2_name"),
-                    "transcript": row_data.get("transcript"),
-                    "summary": row_data.get("summary"),
-                    "deal_value": row_data.get("deal_value"),
-                    "score_role1": row_data.get("score_role1"),
-                    "score_role2": row_data.get("score_role2"),
-                    "model": row_data.get("model"),
-                    "created_at": row_data.get("created_at"),
-                })
+                results.append(
+                    {
+                        "id": row_data.get("id"),
+                        "role1_name": row_data.get("role1_name"),
+                        "role2_name": row_data.get("role2_name"),
+                        "transcript": row_data.get("transcript"),
+                        "summary": row_data.get("summary"),
+                        "deal_value": row_data.get("deal_value"),
+                        "score_role1": row_data.get("score_role1"),
+                        "score_role2": row_data.get("score_role2"),
+                        "model": row_data.get("model"),
+                        "created_at": row_data.get("created_at"),
+                    }
+                )
             return results
     except Exception as e:
         print(f"Error in get_playground_results: {e}")
         return []
+
 
 def delete_playground_result(result_id, user_id, class_, group_id):
     """Delete a single playground result."""
@@ -1171,18 +1246,22 @@ def delete_playground_result(result_id, user_id, class_, group_id):
                   AND class = %(class)s
                   AND group_id = %(group_id)s;
             """
-            cur.execute(query, {
-                'result_id': result_id,
-                'user_id': user_id,
-                'class': class_,
-                'group_id': group_id,
-            })
+            cur.execute(
+                query,
+                {
+                    "result_id": result_id,
+                    "user_id": user_id,
+                    "class": class_,
+                    "group_id": group_id,
+                },
+            )
             conn.commit()
             return cur.rowcount > 0
     except Exception as e:
         conn.rollback()
         print(f"Error in delete_playground_result: {e}")
         return False
+
 
 def delete_all_playground_results(user_id, class_, group_id):
     """Delete all playground results for a user/group."""
@@ -1197,17 +1276,21 @@ def delete_all_playground_results(user_id, class_, group_id):
                   AND class = %(class)s
                   AND group_id = %(group_id)s;
             """
-            cur.execute(query, {
-                'user_id': user_id,
-                'class': class_,
-                'group_id': group_id,
-            })
+            cur.execute(
+                query,
+                {
+                    "user_id": user_id,
+                    "class": class_,
+                    "group_id": group_id,
+                },
+            )
             conn.commit()
             return True
     except Exception as e:
         conn.rollback()
         print(f"Error in delete_all_playground_results: {e}")
         return False
+
 
 # Function to get the round information of a specific group from a specific game
 def get_round_data_by_class_group_id(game_id, class_, group_id):
@@ -1217,21 +1300,25 @@ def get_round_data_by_class_group_id(game_id, class_, group_id):
     try:
         with conn.cursor() as cur:
 
-            query = '''SELECT round_number, group1_class, group1_id, group2_class, group2_id
+            query = """SELECT round_number, group1_class, group1_id, group2_class, group2_id
                        FROM round
-                       WHERE ((group1_class = %(param2)s AND group1_id = %(param3)s) OR (group2_class = %(param2)s AND group2_id = %(param3)s)) AND game_id=%(param1)s;'''
+                       WHERE ((group1_class = %(param2)s AND group1_id = %(param3)s) OR (group2_class = %(param2)s AND group2_id = %(param3)s)) AND game_id=%(param1)s;"""
 
-            cur.execute(query,{
-                'param1': game_id,
-                'param2': class_,
-                'param3': group_id,
-            })
+            cur.execute(
+                query,
+                {
+                    "param1": game_id,
+                    "param2": class_,
+                    "param3": group_id,
+                },
+            )
             round_data = cur.fetchall()
 
             return round_data
 
     except Exception:
         return False
+
 
 # Function to get the ids of the groups that played a specific game
 def get_group_ids_from_game_id(game_id):
@@ -1240,14 +1327,13 @@ def get_group_ids_from_game_id(game_id):
         return False
     try:
         with conn.cursor() as cur:
-            query = '''SELECT DISTINCT u.class, u.group_id
+            query = """SELECT DISTINCT u.class, u.group_id
                     FROM user_ u
                     JOIN plays p ON u.user_id = p.user_id
                     WHERE p.game_id = %(param1)s
-                    ORDER BY u.class, u.group_id;'''
+                    ORDER BY u.class, u.group_id;"""
 
-            cur.execute(query, {
-                'param1': game_id})
+            cur.execute(query, {"param1": game_id})
 
             group_ids = cur.fetchall()
             return group_ids
@@ -1255,6 +1341,7 @@ def get_group_ids_from_game_id(game_id):
     except Exception as e:
         print(f"Error in get_group_ids_from_game_id: {e}")
         return False
+
 
 # Function to check user credentials
 def authenticate_user(email, password_hash):
@@ -1268,7 +1355,7 @@ def authenticate_user(email, password_hash):
         with conn.cursor() as cur:
             query = "SELECT 1 FROM user_ WHERE email = %(param1)s AND password = %(param2)s;"
             print(f"Executing query: {query} with params: {email}, {password_hash}")
-            cur.execute(query, {'param1': email, 'param2': password_hash})
+            cur.execute(query, {"param1": email, "param2": password_hash})
             print("Query executed successfully")
             result = cur.fetchone()
             if result is None:
@@ -1281,6 +1368,7 @@ def authenticate_user(email, password_hash):
         print(f"Authentication error: {str(e)}")
         return False
 
+
 # Function to validate if an email belongs to an instructor
 def is_valid_instructor_email(email):
     conn = get_connection()
@@ -1291,7 +1379,7 @@ def is_valid_instructor_email(email):
 
             query = "SELECT EXISTS(SELECT 1 FROM user_ WHERE email = %(param1)s);"
 
-            cur.execute(query, {'param1': email})
+            cur.execute(query, {"param1": email})
 
             # Fetch the result
             exists = cur.fetchone()[0]
@@ -1300,6 +1388,7 @@ def is_valid_instructor_email(email):
 
     except Exception:
         return False
+
 
 # Function to validate if the user that logged in is an Instructor
 def is_instructor(email):
@@ -1317,7 +1406,7 @@ def is_instructor(email):
                               WHERE email = %(param1)s);
             """
 
-            cur.execute(query, {'param1': email})
+            cur.execute(query, {"param1": email})
 
             # Fetch the result
             is_instr = cur.fetchone()[0]
@@ -1326,6 +1415,7 @@ def is_instructor(email):
 
     except Exception:
         return False
+
 
 # Function to see if exists the user
 def exists_user(email):
@@ -1342,7 +1432,7 @@ def exists_user(email):
                               WHERE email = %(param1)s);
             """
 
-            cur.execute(query, {'param1': email})
+            cur.execute(query, {"param1": email})
 
             # Fetch the result
             exists = cur.fetchone()[0]
@@ -1351,7 +1441,8 @@ def exists_user(email):
 
     except Exception:
         return False
-    
+
+
 # Function to update the user's password
 def update_password(email, new_password):
     conn = get_connection()
@@ -1365,7 +1456,7 @@ def update_password(email, new_password):
                 SET password = %(param1)s
                 WHERE email = %(param2)s;
             """
-            cur.execute(query, {'param1': new_password, 'param2': email})
+            cur.execute(query, {"param1": new_password, "param2": email})
 
             conn.commit()
             return True
@@ -1376,8 +1467,7 @@ def update_password(email, new_password):
 
 
 def _ensure_user_api_key_table(cur):
-    cur.execute(
-        """
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS user_api_key (
             key_id SERIAL PRIMARY KEY,
             user_id VARCHAR(50) NOT NULL,
@@ -1388,8 +1478,7 @@ def _ensure_user_api_key_table(cur):
             FOREIGN KEY (user_id) REFERENCES user_(user_id) ON DELETE CASCADE,
             UNIQUE (user_id, key_name)
         );
-        """
-    )
+        """)
 
 
 def list_user_api_keys(user_id):
@@ -1413,10 +1502,7 @@ def list_user_api_keys(user_id):
                 {"user_id": user_id},
             )
             rows = cur.fetchall()
-            return [
-                {"key_id": row[0], "key_name": row[1], "updated_at": row[2]}
-                for row in rows
-            ]
+            return [{"key_id": row[0], "key_name": row[1], "updated_at": row[2]} for row in rows]
     except Exception as e:
         print(f"Error in list_user_api_keys: {e}")
         return []
@@ -1566,6 +1652,7 @@ def get_user_api_key(user_id, key_id):
         print(f"Error in get_user_api_key: {e}")
         return None
 
+
 # Function to get user_id by email
 def get_user_id_by_email(email):
     conn = get_connection()
@@ -1576,7 +1663,7 @@ def get_user_id_by_email(email):
 
             query = "SELECT user_id FROM user_ WHERE email = %(param1)s;"
 
-            cur.execute(query, {'param1': email})
+            cur.execute(query, {"param1": email})
 
             # Fetch the result
             user_id = cur.fetchone()[0]
@@ -1585,7 +1672,8 @@ def get_user_id_by_email(email):
 
     except Exception:
         return False
-        
+
+
 # Function to update the number of rounds of a game
 def update_num_rounds_game(num_rounds, game_id):
     conn = get_connection()
@@ -1600,7 +1688,7 @@ def update_num_rounds_game(num_rounds, game_id):
                 WHERE game_id = %(param2)s;
             """
 
-            cur.execute(query1, {'param1': num_rounds, 'param2': game_id})
+            cur.execute(query1, {"param1": num_rounds, "param2": game_id})
 
             query2 = """
                 SELECT *
@@ -1616,7 +1704,8 @@ def update_num_rounds_game(num_rounds, game_id):
     except Exception:
         conn.rollback()
         return False
-    
+
+
 # Function to extract from the 'round' table all the rows of a specific game where the chats were not successful
 def get_error_matchups(game_id):
     conn = get_connection()
@@ -1631,7 +1720,7 @@ def get_error_matchups(game_id):
                 WHERE game_id = %(param1)s AND (score_team1_role1 IS NULL OR score_team1_role2 IS NULL);
             """
 
-            cur.execute(query1, {'param1': game_id})
+            cur.execute(query1, {"param1": game_id})
             error_matchups = cur.fetchall()
 
             error_matchups_final = []
@@ -1641,13 +1730,14 @@ def get_error_matchups(game_id):
                 aux_3 = [list(i[3:5])]
                 aux_4 = [1] if i[5] is None else [0]
                 aux_5 = [1] if i[7] is None else [0]
-                error_matchups_final.append(aux_1+aux_2+aux_3+aux_4+aux_5)
+                error_matchups_final.append(aux_1 + aux_2 + aux_3 + aux_4 + aux_5)
 
             return error_matchups_final
 
     except Exception:
         return False
-    
+
+
 # Function to update the scores of a specific row in the 'round' table
 def update_round_data(
     game_id,
@@ -1675,16 +1765,19 @@ def update_round_data(
                     WHERE game_id = %(param1)s AND round_number = %(param2)s AND group1_class = %(param3)s AND group1_id = %(param4)s AND group2_class = %(param5)s AND group2_id = %(param6)s;
                 """
 
-                cur.execute(query1, {
-                    'param1': game_id,
-                    'param2': round_number,
-                    'param3': group1_class,
-                    'param4': group1_id,
-                    'param5': group2_class,
-                    'param6': group2_id,
-                    'param7': score_team1,
-                    'param8': score_team2
-                })
+                cur.execute(
+                    query1,
+                    {
+                        "param1": game_id,
+                        "param2": round_number,
+                        "param3": group1_class,
+                        "param4": group1_id,
+                        "param5": group2_class,
+                        "param6": group2_id,
+                        "param7": score_team1,
+                        "param8": score_team2,
+                    },
+                )
 
                 conn.commit()
                 return True
@@ -1697,16 +1790,19 @@ def update_round_data(
                     WHERE game_id = %(param1)s AND round_number = %(param2)s AND group1_class = %(param3)s AND group1_id = %(param4)s AND group2_class = %(param5)s AND group2_id = %(param6)s;
                 """
 
-                cur.execute(query1, {
-                    'param1': game_id,
-                    'param2': round_number,
-                    'param3': group1_class,
-                    'param4': group1_id,
-                    'param5': group2_class,
-                    'param6': group2_id,
-                    'param7': score_team1,
-                    'param8': score_team2
-                })
+                cur.execute(
+                    query1,
+                    {
+                        "param1": game_id,
+                        "param2": round_number,
+                        "param3": group1_class,
+                        "param4": group1_id,
+                        "param5": group2_class,
+                        "param6": group2_id,
+                        "param7": score_team1,
+                        "param8": score_team2,
+                    },
+                )
 
                 conn.commit()
                 return True
@@ -1716,7 +1812,8 @@ def update_round_data(
     except Exception:
         conn.rollback()
         return False
-    
+
+
 # Function to delete all the rows in the 'round' table that belong to a specific game_id
 def delete_from_round(game_id):
     conn = get_connection()
@@ -1730,15 +1827,16 @@ def delete_from_round(game_id):
                 WHERE game_id = %(param1)s;
             """
 
-            cur.execute(query1, {'param1': game_id})
+            cur.execute(query1, {"param1": game_id})
 
             conn.commit()
             return True
 
     except Exception:
         conn.rollback()
-        return False 
-    
+        return False
+
+
 # The next four functions enable the Instructor to view the Play section exactly as it appears to a student in a specific group
 # Function to get all the different academic years of students
 def get_academic_years_of_students():
@@ -1768,6 +1866,7 @@ def get_academic_years_of_students():
     except Exception:
         return False
 
+
 # Function to get all the different classes of students from a specfic academic year
 def get_classes_of_students(academic_year):
     conn = get_connection()
@@ -1784,7 +1883,7 @@ def get_classes_of_students(academic_year):
                 ORDER BY u.class ASC;
             """
 
-            cur.execute(query, {'param1': academic_year})
+            cur.execute(query, {"param1": academic_year})
             classes_of_students = cur.fetchall()
 
             classes_of_students_final = []
@@ -1795,6 +1894,7 @@ def get_classes_of_students(academic_year):
 
     except Exception:
         return False
+
 
 # Function to get all the different groups of students from a specfic class of a specific academic year
 def get_groups_of_students(academic_year, class_):
@@ -1812,7 +1912,7 @@ def get_groups_of_students(academic_year, class_):
                 ORDER BY u.group_id ASC;
             """
 
-            cur.execute(query, {'param1': academic_year, 'param2': class_})
+            cur.execute(query, {"param1": academic_year, "param2": class_})
             groups_of_students = cur.fetchall()
 
             groups_of_students_final = []
@@ -1823,6 +1923,7 @@ def get_groups_of_students(academic_year, class_):
 
     except Exception:
         return False
+
 
 # Function to get the user_id of a student from a specific group of a specific class of a specific academic year
 def get_user_id_of_student(academic_year, class_, group_id):
@@ -1840,15 +1941,16 @@ def get_user_id_of_student(academic_year, class_, group_id):
                 ORDER BY u.group_id ASC;
             """
 
-            cur.execute(query, {'param1': academic_year, 'param2': class_, 'param3': group_id})
+            cur.execute(query, {"param1": academic_year, "param2": class_, "param3": group_id})
             user_id = cur.fetchone()[0]
             return user_id
 
     except Exception:
         return False
 
+
 # Function to get and compute leaderboard scores for a given academic year
-def fetch_and_compute_scores_for_year(selected_year, student = False):
+def fetch_and_compute_scores_for_year(selected_year, student=False):
     conn = get_connection()
     if not conn:
         return False
@@ -1973,7 +2075,7 @@ def fetch_and_compute_scores_for_year(selected_year, student = False):
             """
 
             # Execute the query with the selected year
-            cur.execute(query, {'param1': selected_year, 'param2': (0, 1) if not student else (1,)})
+            cur.execute(query, {"param1": selected_year, "param2": (0, 1) if not student else (1,)})
 
             # Fetch results
             leaderboard = cur.fetchall()
@@ -1996,7 +2098,8 @@ def fetch_and_compute_scores_for_year(selected_year, student = False):
 
     except Exception:
         return False
-    
+
+
 # Function to get and compute leaderboard scores for a given game_id
 def fetch_and_compute_scores_for_year_game(game_id):
     conn = get_connection()
@@ -2088,7 +2191,7 @@ def fetch_and_compute_scores_for_year_game(game_id):
             """
 
             # Execute the query with the selected year
-            cur.execute(query, {'param1': game_id})
+            cur.execute(query, {"param1": game_id})
 
             # Fetch results
             leaderboard = cur.fetchall()
@@ -2111,6 +2214,7 @@ def fetch_and_compute_scores_for_year_game(game_id):
 
     except Exception:
         return False
+
 
 # Function to store group values in the database
 def store_group_values(game_id, class_, group_id, minimizer_value, maximizer_value):
@@ -2142,13 +2246,16 @@ def store_group_values(game_id, class_, group_id, minimizer_value, maximizer_val
                 DO UPDATE SET minimizer_value = %(param4)s, maximizer_value = %(param5)s;
             """
 
-            cur.execute(query, {
-                'param1': game_id,
-                'param2': class_,
-                'param3': group_id,
-                'param4': minimizer_value,
-                'param5': maximizer_value
-            })
+            cur.execute(
+                query,
+                {
+                    "param1": game_id,
+                    "param2": class_,
+                    "param3": group_id,
+                    "param4": minimizer_value,
+                    "param5": maximizer_value,
+                },
+            )
 
             conn.commit()
             return True
@@ -2156,6 +2263,7 @@ def store_group_values(game_id, class_, group_id, minimizer_value, maximizer_val
         conn.rollback()
         print(f"Error in store_group_values: {e}")
         return False
+
 
 # Function to store game parameters (bounds)
 def store_game_parameters(game_id, min_minimizer, max_minimizer, min_maximizer, max_maximizer):
@@ -2185,11 +2293,7 @@ def store_game_parameters(game_id, min_minimizer, max_minimizer, min_maximizer, 
                 DO UPDATE SET minimizer_value = %(param2)s, maximizer_value = %(param3)s;
             """
 
-            cur.execute(query, {
-                'param1': game_id,
-                'param2': min_minimizer,
-                'param3': min_maximizer
-            })
+            cur.execute(query, {"param1": game_id, "param2": min_minimizer, "param3": min_maximizer})
 
             # Store max values in another row using 'params' as class and 1 as group_id
             query = """
@@ -2199,11 +2303,7 @@ def store_game_parameters(game_id, min_minimizer, max_minimizer, min_maximizer, 
                 DO UPDATE SET minimizer_value = %(param2)s, maximizer_value = %(param3)s;
             """
 
-            cur.execute(query, {
-                'param1': game_id,
-                'param2': max_minimizer,
-                'param3': max_maximizer
-            })
+            cur.execute(query, {"param1": game_id, "param2": max_minimizer, "param3": max_maximizer})
 
             conn.commit()
             return True
@@ -2211,6 +2311,7 @@ def store_game_parameters(game_id, min_minimizer, max_minimizer, min_maximizer, 
         conn.rollback()
         print(f"Error in store_game_parameters: {e}")
         return False
+
 
 # Function to get group values from database
 def get_group_values(game_id, class_, group_id):
@@ -2225,21 +2326,15 @@ def get_group_values(game_id, class_, group_id):
                 WHERE game_id = %(param1)s AND class = %(param2)s AND group_id = %(param3)s;
             """
 
-            cur.execute(query, {
-                'param1': game_id,
-                'param2': class_,
-                'param3': group_id
-            })
+            cur.execute(query, {"param1": game_id, "param2": class_, "param3": group_id})
 
             result = cur.fetchone()
             if result:
-                return {
-                    "minimizer_value": result[0],
-                    "maximizer_value": result[1]
-                }
+                return {"minimizer_value": result[0], "maximizer_value": result[1]}
             return None
     except Exception:
         return None
+
 
 # Function to get game parameters (bounds)
 def get_game_parameters(game_id):
@@ -2256,21 +2351,22 @@ def get_game_parameters(game_id):
                 ORDER BY group_id;
             """
 
-            cur.execute(query, {'param1': game_id})
+            cur.execute(query, {"param1": game_id})
 
             results = cur.fetchall()
             # Expecting two rows: one for min values (group_id=0), one for max values (group_id=1)
             if len(results) == 2:
                 return {
-                    "min_minimizer": results[0][0], # Min minimizer from row 0
-                    "max_minimizer": results[1][0], # Max minimizer from row 1
-                    "min_maximizer": results[0][1], # Min maximizer from row 0
-                    "max_maximizer": results[1][1]  # Max maximizer from row 1
+                    "min_minimizer": results[0][0],  # Min minimizer from row 0
+                    "max_minimizer": results[1][0],  # Max minimizer from row 1
+                    "min_maximizer": results[0][1],  # Min maximizer from row 0
+                    "max_maximizer": results[1][1],  # Max maximizer from row 1
                 }
             return None
     except Exception as e:
         print(f"Error in get_game_parameters: {e}")
         return None
+
 
 # Function to get all group values for a game (excluding parameters)
 def get_all_group_values(game_id):
@@ -2286,17 +2382,14 @@ def get_all_group_values(game_id):
                 ORDER BY class, group_id;
             """
 
-            cur.execute(query, {'param1': game_id})
+            cur.execute(query, {"param1": game_id})
 
             results = cur.fetchall()
             values = []
             for row in results:
-                values.append({
-                    "class": row[0],
-                    "group_id": row[1],
-                    "minimizer_value": row[2],
-                    "maximizer_value": row[3]
-                })
+                values.append(
+                    {"class": row[0], "group_id": row[1], "minimizer_value": row[2], "maximizer_value": row[3]}
+                )
             return values
     except Exception as e:
         print(f"Error in get_all_group_values: {e}")
@@ -2330,13 +2423,16 @@ def insert_student_prompt(game_id, class_, group_id, prompt, submitted_by=None):
                               submitted_by = EXCLUDED.submitted_by,
                               updated_at = CURRENT_TIMESTAMP;
             """
-            cur.execute(query, {
-                'game_id': game_id,
-                'class': class_,
-                'group_id': group_id,
-                'prompt': prompt,
-                'submitted_by': submitted_by
-            })
+            cur.execute(
+                query,
+                {
+                    "game_id": game_id,
+                    "class": class_,
+                    "group_id": group_id,
+                    "prompt": prompt,
+                    "submitted_by": submitted_by,
+                },
+            )
             conn.commit()
             return True
     except Exception as e:
@@ -2367,15 +2463,12 @@ def get_student_prompt(game_id, class_, group_id):
                 FROM student_prompt
                 WHERE game_id = %(game_id)s AND class = %(class)s AND group_id = %(group_id)s;
             """
-            cur.execute(query, {
-                'game_id': game_id,
-                'class': class_,
-                'group_id': group_id
-            })
+            cur.execute(query, {"game_id": game_id, "class": class_, "group_id": group_id})
             row = cur.fetchone()
             return row[0] if row else None
     except Exception:
         return None
+
 
 # Function to retrieve a student prompt and last update timestamp
 def get_student_prompt_with_timestamp(game_id, class_, group_id):
@@ -2390,11 +2483,7 @@ def get_student_prompt_with_timestamp(game_id, class_, group_id):
                 FROM student_prompt
                 WHERE game_id = %(game_id)s AND class = %(class)s AND group_id = %(group_id)s;
             """
-            cur.execute(query, {
-                'game_id': game_id,
-                'class': class_,
-                'group_id': group_id
-            })
+            cur.execute(query, {"game_id": game_id, "class": class_, "group_id": group_id})
             row = cur.fetchone()
             if row:
                 return {"prompt": row[0], "updated_at": row[1]}

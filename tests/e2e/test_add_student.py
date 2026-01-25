@@ -50,10 +50,10 @@ class TestAddStudent:
         # Fill the form fields - Streamlit text inputs
         # Use locator to find input fields after their labels
         page.locator("input").nth(0).fill(test_user_id)  # User ID
-        page.locator("input").nth(1).fill(test_email)     # Email
-        page.locator("input").nth(2).fill("1")            # Group ID
-        page.locator("input").nth(3).fill("2024/2025")    # Academic year
-        page.locator("input").nth(4).fill("A")            # Class
+        page.locator("input").nth(1).fill(test_email)  # Email
+        page.locator("input").nth(2).fill("1")  # Group ID
+        page.locator("input").nth(3).fill("2024/2025")  # Academic year
+        page.locator("input").nth(4).fill("A")  # Class
 
         # Submit the form - click the form submit button
         page.locator("[data-testid='stFormSubmitButton'] button").click()
@@ -64,13 +64,13 @@ class TestAddStudent:
         try:
             # First try to catch the success message
             page.wait_for_selector("text=Student added successfully", timeout=10000)
-        except Exception:
+        except Exception as err:
             # Check if there's an error message
             error_visible = page.locator("text=Failed to add student").is_visible()
             fields_error = page.locator("text=Please fill in all fields").is_visible()
 
             if error_visible or fields_error:
-                raise AssertionError("Form submission failed - check error message on page")
+                raise AssertionError("Form submission failed - check error message on page") from err
 
             # If no error and we're still on the page, check we're on Student Management
             page.wait_for_selector("text=Student Management", timeout=10000)

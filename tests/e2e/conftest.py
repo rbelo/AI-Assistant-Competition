@@ -133,7 +133,7 @@ def database_url():
         except ImportError:
             import toml
 
-            with open(secrets_path, "r") as f:
+            with open(secrets_path) as f:
                 secrets = toml.load(f)
 
         url = secrets.get("database", {}).get("url")

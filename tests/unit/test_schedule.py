@@ -4,9 +4,10 @@ Unit tests for schedule module.
 Tests the Berger round-robin scheduling algorithm.
 """
 
-import pytest
-import sys
 import os
+import sys
+
+import pytest
 
 # Add project root to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))

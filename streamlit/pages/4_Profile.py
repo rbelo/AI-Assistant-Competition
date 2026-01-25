@@ -1,45 +1,53 @@
-import streamlit as st
-import pandas as pd
 import hashlib
 import time
-from modules.database_handler import update_password, get_class_from_user_id, get_group_id_from_user_id
-from modules.database_handler import fetch_games_data, fetch_and_compute_scores_for_year, get_academic_year_from_user_id, fetch_and_compute_scores_for_year_game
+
+import pandas as pd
 from modules.database_handler import (
-    list_user_api_keys,
     add_user_api_key,
-    update_user_api_key_name,
-    update_user_api_key,
-    get_user_api_key,
     delete_user_api_key,
+    fetch_and_compute_scores_for_year,
+    fetch_and_compute_scores_for_year_game,
+    fetch_games_data,
+    get_academic_year_from_user_id,
+    get_class_from_user_id,
+    get_group_id_from_user_id,
+    get_user_api_key,
+    list_user_api_keys,
+    update_password,
+    update_user_api_key,
+    update_user_api_key_name,
 )
 from modules.sidebar import render_sidebar
 
-# Initialize session state for buttons if not set
-if 'password_edit_mode' not in st.session_state:
-    st.session_state['password_edit_mode'] = False
+import streamlit as st
 
-if 'show_password' not in st.session_state:
-    st.session_state['show_password'] = False  # Track password visibility state
+# Initialize session state for buttons if not set
+if "password_edit_mode" not in st.session_state:
+    st.session_state["password_edit_mode"] = False
+
+if "show_password" not in st.session_state:
+    st.session_state["show_password"] = False  # Track password visibility state
 
 render_sidebar()
 
+
 def render_password_section(email):
-    st.markdown(f"<h3 style='font-size: 24px;'>Password</h3>", unsafe_allow_html=True)
-    password = st.session_state.get('login_password', '')
-    if st.session_state['show_password']:
+    st.markdown("<h3 style='font-size: 24px;'>Password</h3>", unsafe_allow_html=True)
+    password = st.session_state.get("login_password", "")
+    if st.session_state["show_password"]:
         st.write(f"{password if password else 'Not defined'}")
     else:
-        st.text('*******' if password else 'Not defined')
+        st.text("*******" if password else "Not defined")
 
     col1, col2 = st.columns([1, 1])
     with col1:
         st.checkbox("Show password", key="show_password")
     with col2:
         if st.button("Edit password", key="edit_password"):
-            st.session_state['password_edit_mode'] = not st.session_state['password_edit_mode']
+            st.session_state["password_edit_mode"] = not st.session_state["password_edit_mode"]
             st.rerun()
 
-    if st.session_state['password_edit_mode']:
+    if st.session_state["password_edit_mode"]:
         with st.form(key="password_form"):
             new_password = st.text_input("**Enter new password**", type="password", key="new_password_input")
             confirm_password = st.text_input("**Confirm new password**", type="password", key="confirm_password_input")
@@ -48,18 +56,20 @@ def render_password_section(email):
             if update_password_btn:
                 if new_password and confirm_password:
                     if new_password == confirm_password:
-                        if (len(new_password) >= 8 and
-                            any(char.isupper() for char in new_password) and
-                            any(char.islower() for char in new_password) and
-                            any(char.isdigit() for char in new_password) and
-                            any(char in '!@#$%^&*()-_=+[]{}|;:,.<>?/`~' for char in new_password)):
+                        if (
+                            len(new_password) >= 8
+                            and any(char.isupper() for char in new_password)
+                            and any(char.islower() for char in new_password)
+                            and any(char.isdigit() for char in new_password)
+                            and any(char in "!@#$%^&*()-_=+[]{}|;:,.<>?/`~" for char in new_password)
+                        ):
 
                             hashed_password = hashlib.sha256(new_password.encode()).hexdigest()
 
                             if update_password(email, hashed_password):
                                 st.success("Password updated successfully!")
-                                st.session_state['login_password'] = new_password
-                                st.session_state['password_edit_mode'] = False
+                                st.session_state["login_password"] = new_password
+                                st.session_state["password_edit_mode"] = False
                                 time.sleep(1)
                                 st.rerun()
                             else:
@@ -84,7 +94,7 @@ def _format_key_date(updated_at):
 
 
 def render_api_keys_section(user_id, usage_label):
-    st.markdown(f"<h3 style='font-size: 24px;'>API Keys</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='font-size: 24px;'>API Keys</h3>", unsafe_allow_html=True)
     st.caption("Keys are stored encrypted.")
 
     keys = list_user_api_keys(user_id)
@@ -194,54 +204,56 @@ def render_api_keys_section(user_id, usage_label):
             disabled=selected_key is None,
         ):
             delete_key_dialog(selected_key)
-# Check if the user is logged in
-if st.session_state['authenticated']:
 
-    if st.session_state.instructor == True:
+
+# Check if the user is logged in
+if st.session_state["authenticated"]:
+
+    if st.session_state.instructor:
 
         st.title("Profile")
 
         # Display email
-        email = st.session_state['login_email']
-        st.markdown(f"<h3 style='font-size: 24px;'>Email</h3>", unsafe_allow_html=True)
+        email = st.session_state["login_email"]
+        st.markdown("<h3 style='font-size: 24px;'>Email</h3>", unsafe_allow_html=True)
         st.write(f"{email}")
 
         # Display user_id
-        user_id = st.session_state['user_id']
-        st.markdown(f"<h3 style='font-size: 24px;'>User ID</h3>", unsafe_allow_html=True)
+        user_id = st.session_state["user_id"]
+        st.markdown("<h3 style='font-size: 24px;'>User ID</h3>", unsafe_allow_html=True)
         st.write(f"{user_id}")
 
         render_password_section(email)
 
         render_api_keys_section(user_id, "the Playground and Simulations")
 
-    elif st.session_state.instructor == False:
-            
-        ACADEMIC_YEAR = get_academic_year_from_user_id(st.session_state.user_id)
-        CLASS = get_class_from_user_id(st.session_state['user_id'])
-        GROUP_ID = get_group_id_from_user_id(st.session_state['user_id'])
-        
-        st.title("Profile")
-        selection = st.sidebar.radio(label= '', options=['Leaderboard','Personal Data'], horizontal=True)
+    elif not st.session_state.instructor:
 
-        if selection == 'Personal Data':
+        ACADEMIC_YEAR = get_academic_year_from_user_id(st.session_state.user_id)
+        CLASS = get_class_from_user_id(st.session_state["user_id"])
+        GROUP_ID = get_group_id_from_user_id(st.session_state["user_id"])
+
+        st.title("Profile")
+        selection = st.sidebar.radio(label="", options=["Leaderboard", "Personal Data"], horizontal=True)
+
+        if selection == "Personal Data":
 
             st.header("Personal Data")
 
             # Display email
-            email = st.session_state['login_email']
-            st.markdown(f"<h3 style='font-size: 24px;'>Email</h3>", unsafe_allow_html=True)
+            email = st.session_state["login_email"]
+            st.markdown("<h3 style='font-size: 24px;'>Email</h3>", unsafe_allow_html=True)
             st.write(f"{email}")
 
             # Display user_id
-            user_id = st.session_state['user_id']
-            st.markdown(f"<h3 style='font-size: 24px;'>User ID</h3>", unsafe_allow_html=True)
+            user_id = st.session_state["user_id"]
+            st.markdown("<h3 style='font-size: 24px;'>User ID</h3>", unsafe_allow_html=True)
             st.write(f"{user_id}")
 
             render_password_section(email)
             render_api_keys_section(user_id, "the Playground")
 
-        if selection == 'Leaderboard':
+        if selection == "Leaderboard":
             st.header("Leaderboard")
 
             games = fetch_games_data(academic_year=ACADEMIC_YEAR)
@@ -249,16 +261,20 @@ if st.session_state['authenticated']:
             if games != []:
 
                 game_names_with_classes = [
-                                f"{game['game_name']}{'' if game['game_class'] == '_' else (' - Class ' + game['game_class'])}"
-                                for game in games
-                            ]
+                    f"{game['game_name']}{'' if game['game_class'] == '_' else (' - Class ' + game['game_class'])}"
+                    for game in games
+                ]
 
                 game_names_with_classes.insert(0, "All")
 
                 selected_game_with_classes = st.sidebar.selectbox("Select Game", game_names_with_classes)
 
                 def color_coding(row):
-                        return ['background-color:rgba(0, 255, 0, 0.25'] * len(row) if row["Class"] == CLASS  and row["Group ID"] == GROUP_ID else [''] * len(row)
+                    return (
+                        ["background-color:rgba(0, 255, 0, 0.25"] * len(row)
+                        if row["Class"] == CLASS and row["Group ID"] == GROUP_ID
+                        else [""] * len(row)
+                    )
 
                 if selected_game_with_classes == "All":
 
@@ -267,7 +283,7 @@ if st.session_state['authenticated']:
                     leaderboard = fetch_and_compute_scores_for_year(ACADEMIC_YEAR, student=True)
 
                     if leaderboard:
-                                            
+
                         leaderboard_with_position = [
                             {
                                 "Class": row["team_class"],
@@ -282,9 +298,9 @@ if st.session_state['authenticated']:
                             }
                             for row in leaderboard
                         ]
-                        
+
                         leaderboard_df = pd.DataFrame(
-                            leaderboard_with_position, 
+                            leaderboard_with_position,
                             columns=[
                                 "Class",
                                 "Group ID",
@@ -294,13 +310,12 @@ if st.session_state['authenticated']:
                                 "Rank (Minimizer Role)",
                                 "Score (Minimizer Role)",
                                 "Rank (Maximizer Role)",
-                                "Score (Maximizer Role)"
-                            ]
+                                "Score (Maximizer Role)",
+                            ],
                         )
 
                         leaderboard_df["Avg Rounds"] = pd.to_numeric(
-                            leaderboard_df["Avg Rounds"],
-                            errors="coerce"
+                            leaderboard_df["Avg Rounds"], errors="coerce"
                         ).round(2)
                         leaderboard_df["Avg Score"] = leaderboard_df["Avg Score"].round(2)
                         leaderboard_df["Score (Minimizer Role)"] = leaderboard_df["Score (Minimizer Role)"].round(2)
@@ -315,8 +330,12 @@ if st.session_state['authenticated']:
                                 "Class": st.column_config.TextColumn(width="small"),
                                 "Group ID": st.column_config.NumberColumn(width="small"),
                                 "Games": st.column_config.NumberColumn(width="small", help="Total games played"),
-                                "Avg Rounds": st.column_config.NumberColumn(width="small", help="Average rounds per game"),
-                                "Avg Score": st.column_config.NumberColumn(width="small", help="Average score across games"),
+                                "Avg Rounds": st.column_config.NumberColumn(
+                                    width="small", help="Average rounds per game"
+                                ),
+                                "Avg Score": st.column_config.NumberColumn(
+                                    width="small", help="Average score across games"
+                                ),
                                 "Rank (Minimizer Role)": st.column_config.NumberColumn(width="small"),
                                 "Score (Minimizer Role)": st.column_config.NumberColumn(width="small"),
                                 "Rank (Maximizer Role)": st.column_config.NumberColumn(width="small"),
@@ -324,20 +343,21 @@ if st.session_state['authenticated']:
                             },
                         )
 
-                    else: st.write("Leaderboard not available yet.") 
+                    else:
+                        st.write("Leaderboard not available yet.")
 
                 else:
 
                     st.subheader(selected_game_with_classes)
 
-                    index_ = game_names_with_classes.index(selected_game_with_classes)-1
+                    index_ = game_names_with_classes.index(selected_game_with_classes) - 1
 
-                    if games[index_]['available'] == 1:
-                        leaderboard = fetch_and_compute_scores_for_year_game(games[index_]['game_id'])
+                    if games[index_]["available"] == 1:
+                        leaderboard = fetch_and_compute_scores_for_year_game(games[index_]["game_id"])
 
-                        if leaderboard:                         
+                        if leaderboard:
 
-                            role_labels = games[index_]['name_roles'].split('#_;:)')
+                            role_labels = games[index_]["name_roles"].split("#_;:)")
                             role_1_label = role_labels[0]
                             role_2_label = role_labels[1]
                             leaderboard_with_position = [
@@ -356,7 +376,7 @@ if st.session_state['authenticated']:
                             ]
 
                             leaderboard_df = pd.DataFrame(
-                                leaderboard_with_position, 
+                                leaderboard_with_position,
                                 columns=[
                                     "Class",
                                     "Group ID",
@@ -366,17 +386,20 @@ if st.session_state['authenticated']:
                                     f"Rank ({role_1_label})",
                                     f"Score ({role_1_label})",
                                     f"Rank ({role_2_label})",
-                                    f"Score ({role_2_label})"
-                                ]
+                                    f"Score ({role_2_label})",
+                                ],
                             )
 
                             leaderboard_df["Avg Rounds"] = pd.to_numeric(
-                                leaderboard_df["Avg Rounds"],
-                                errors="coerce"
+                                leaderboard_df["Avg Rounds"], errors="coerce"
                             ).round(2)
                             leaderboard_df["Avg Score"] = leaderboard_df["Avg Score"].round(2)
-                            leaderboard_df[f"Score ({role_1_label})"] = leaderboard_df[f"Score ({role_1_label})"].round(2)
-                            leaderboard_df[f"Score ({role_2_label})"] = leaderboard_df[f"Score ({role_2_label})"].round(2)
+                            leaderboard_df[f"Score ({role_1_label})"] = leaderboard_df[f"Score ({role_1_label})"].round(
+                                2
+                            )
+                            leaderboard_df[f"Score ({role_2_label})"] = leaderboard_df[f"Score ({role_2_label})"].round(
+                                2
+                            )
 
                             leaderboard_df.index = leaderboard_df.index + 1
 
@@ -387,8 +410,12 @@ if st.session_state['authenticated']:
                                     "Class": st.column_config.TextColumn(width="small"),
                                     "Group ID": st.column_config.NumberColumn(width="small"),
                                     "Games": st.column_config.NumberColumn(width="small", help="Total games played"),
-                                    "Avg Rounds": st.column_config.NumberColumn(width="small", help="Average rounds per game"),
-                                    "Avg Score": st.column_config.NumberColumn(width="small", help="Average score across games"),
+                                    "Avg Rounds": st.column_config.NumberColumn(
+                                        width="small", help="Average rounds per game"
+                                    ),
+                                    "Avg Score": st.column_config.NumberColumn(
+                                        width="small", help="Average score across games"
+                                    ),
                                     f"Rank ({role_1_label})": st.column_config.NumberColumn(width="small"),
                                     f"Score ({role_1_label})": st.column_config.NumberColumn(width="small"),
                                     f"Rank ({role_2_label})": st.column_config.NumberColumn(width="small"),
@@ -396,9 +423,11 @@ if st.session_state['authenticated']:
                                 },
                             )
 
-                    elif games[index_]['available'] == 0: st.write("Leaderboard not available yet.") 
+                    elif games[index_]["available"] == 0:
+                        st.write("Leaderboard not available yet.")
 
-            else: st.write('No games played yet.')
+            else:
+                st.write("No games played yet.")
 
 else:
     st.title("Profile")

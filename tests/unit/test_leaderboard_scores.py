@@ -1,6 +1,5 @@
 import os
 import sys
-
 from unittest.mock import MagicMock
 
 import pytest
@@ -10,7 +9,7 @@ STREAMLIT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../
 if STREAMLIT_PATH not in sys.path:
     sys.path.insert(0, STREAMLIT_PATH)
 
-from modules import database_handler
+from modules import database_handler  # noqa: E402
 
 
 def _mock_connection(cursor):

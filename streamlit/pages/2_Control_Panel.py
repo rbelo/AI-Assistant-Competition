@@ -1,25 +1,53 @@
-import streamlit as st
-import pandas as pd
+import random
 import time
 from datetime import datetime, timedelta
-import random
-import re
-from st_aggrid import GridOptionsBuilder, AgGrid, GridUpdateMode, ColumnsAutoSizeMode
-from modules.sidebar import render_sidebar
-from modules.database_handler import populate_plays_table, insert_student_data, remove_student, store_game_in_db, update_game_in_db, update_num_rounds_game, update_access_to_chats, delete_from_round, store_group_values, store_game_parameters, get_game_parameters
-from modules.database_handler import get_academic_year_class_combinations, get_game_by_id, fetch_games_data, get_next_game_id, get_students_from_db, get_group_ids_from_game_id, get_round_data, get_error_matchups, fetch_and_compute_scores_for_year_game, get_negotiation_chat_details
-from modules.database_handler import get_all_group_values, get_student_prompt, get_student_prompt_with_timestamp, upsert_game_simulation_params, get_game_simulation_params, delete_negotiation_chats
-from modules.database_handler import list_user_api_keys, get_user_api_key
+
+import pandas as pd
+from modules.database_handler import (
+    delete_from_round,
+    delete_negotiation_chats,
+    fetch_and_compute_scores_for_year_game,
+    fetch_games_data,
+    get_academic_year_class_combinations,
+    get_all_group_values,
+    get_error_matchups,
+    get_game_by_id,
+    get_game_parameters,
+    get_game_simulation_params,
+    get_group_ids_from_game_id,
+    get_negotiation_chat_details,
+    get_next_game_id,
+    get_round_data,
+    get_student_prompt,
+    get_student_prompt_with_timestamp,
+    get_students_from_db,
+    get_user_api_key,
+    insert_student_data,
+    list_user_api_keys,
+    populate_plays_table,
+    remove_student,
+    store_game_in_db,
+    store_game_parameters,
+    store_group_values,
+    update_access_to_chats,
+    update_game_in_db,
+    update_num_rounds_game,
+    upsert_game_simulation_params,
+)
+from modules.metrics_handler import record_page_entry, record_page_exit
+from modules.negotiation_display import render_chat_summary
 from modules.negotiations import (
-    create_chats,
-    create_all_error_chats,
-    extract_summary_from_transcript,
     build_llm_config,
+    create_all_error_chats,
+    create_chats,
+    extract_summary_from_transcript,
     is_invalid_api_key_error,
 )
-from modules.negotiation_display import render_chat_summary
-from modules.metrics_handler import record_page_entry, record_page_exit
+from modules.sidebar import render_sidebar
 from modules.student_utils import process_student_csv
+from st_aggrid import AgGrid, ColumnsAutoSizeMode, GridOptionsBuilder, GridUpdateMode
+
+import streamlit as st
 
 # ---------------------------- SET THE DEFAULT SESSION STATE FOR ALL CASES ------------------------------- #
 if "cc_game_creation_in_progress" not in st.session_state:
@@ -43,12 +71,14 @@ if "cc_pending_selected_game" not in st.session_state:
 
 render_sidebar()
 
+
 def build_year_class_options(academic_year_class_combinations):
     combination_options = []
     for year, classes in academic_year_class_combinations.items():
         combination_options.append(f"{year}")
         combination_options.extend([f"{year} - {cls}" for cls in classes])
     return combination_options
+
 
 def parse_year_class(selection):
     if "-" in selection:
@@ -57,6 +87,7 @@ def parse_year_class(selection):
         game_academic_year = selection
         game_class = "_"
     return game_academic_year, game_class
+
 
 def render_control_center():
     st.title("Control Panel")
@@ -101,19 +132,13 @@ def render_control_center():
             f"{game['game_academic_year']}{'' if game['game_class'] == '_' else (' - ' + game['game_class'])} • {game['game_name']}"
             for game in games_for_selected_year
         ]
-        game_id_by_label = {
-            label: game["game_id"]
-            for label, game in zip(game_labels, games_for_selected_year)
-        }
+        game_id_by_label = {label: game["game_id"] for label, game in zip(game_labels, games_for_selected_year)}
 
         with col2:
             selected_game_label = st.selectbox("Game", game_labels, key="cc_selected_game")
 
         selected_game_id = game_id_by_label.get(selected_game_label)
-        selected_game = next(
-            (game for game in games_for_selected_year if game['game_id'] == selected_game_id),
-            None
-        )
+        selected_game = next((game for game in games_for_selected_year if game["game_id"] == selected_game_id), None)
 
         if not selected_game:
             st.warning("Game not found.")
@@ -121,11 +146,11 @@ def render_control_center():
 
         game_key_suffix = str(selected_game["game_id"])
 
-        st.subheader(selected_game['game_name'])
+        st.subheader(selected_game["game_name"])
         overview_tabs = st.tabs(["Setup", "Submissions", "Simulation", "Results"])
 
         with overview_tabs[0]:
-            game_id = selected_game['game_id']
+            game_id = selected_game["game_id"]
             game_details = get_game_by_id(game_id)
             if not game_details:
                 st.error("Game not found.")
@@ -133,8 +158,8 @@ def render_control_center():
 
             created_by_stored = game_details["created_by"]
             game_name_stored = game_details["game_name"]
-            name_roles_1_stored = game_details["name_roles"].split('#_;:)')[0]
-            name_roles_2_stored = game_details["name_roles"].split('#_;:)')[1]
+            name_roles_1_stored = game_details["name_roles"].split("#_;:)")[0]
+            name_roles_2_stored = game_details["name_roles"].split("#_;:)")[1]
             game_academic_year_stored = game_details["game_academic_year"]
             game_class_stored = game_details["game_class"]
             password_stored = game_details["password"]
@@ -150,7 +175,7 @@ def render_control_center():
                     params_data["min_minimizer"],
                     params_data["max_minimizer"],
                     params_data["min_maximizer"],
-                    params_data["max_maximizer"]
+                    params_data["max_maximizer"],
                 ]
             else:
                 params_stored = [0, 0, 0, 0]
@@ -166,7 +191,9 @@ def render_control_center():
                 stored_combination = f"{game_academic_year_stored} - {game_class_stored}"
             else:
                 stored_combination = f"{game_academic_year_stored}"
-            stored_index = combination_options.index(stored_combination) if stored_combination in combination_options else 0
+            stored_index = (
+                combination_options.index(stored_combination) if stored_combination in combination_options else 0
+            )
 
             game_type_label = "Zero Sum" if game_type == "zero_sum" else "Prisoner's Dilemma"
             st.write(f"Game Type: {game_type_label}")
@@ -198,7 +225,7 @@ def render_control_center():
                         value=name_roles_2_stored,
                     )
 
-                st.write('')
+                st.write("")
                 col1, col2, col3, col4 = st.columns(4)
                 with col1:
                     param1_edit = st.number_input(
@@ -231,7 +258,7 @@ def render_control_center():
                         step=1,
                         value=int(params_stored[3]),
                         key=f"cc_param4_edit_{game_key_suffix}",
-                        help='All values are expressed in the unit mentioned in description.'
+                        help="All values are expressed in the unit mentioned in description.",
                     )
 
                 selected_combination_edit = st.selectbox(
@@ -262,12 +289,20 @@ def render_control_center():
                 submit_button = st.form_submit_button("Save Changes")
 
             if submit_button:
-                if game_name_edit and game_explanation_edit and name_roles_1_edit and name_roles_2_edit and \
-                    selected_combination_edit and password_edit and deadline_date_edit and deadline_time_edit:
+                if (
+                    game_name_edit
+                    and game_explanation_edit
+                    and name_roles_1_edit
+                    and name_roles_2_edit
+                    and selected_combination_edit
+                    and password_edit
+                    and deadline_date_edit
+                    and deadline_time_edit
+                ):
                     update_success = False
                     try:
                         submission_deadline = datetime.combine(deadline_date_edit, deadline_time_edit)
-                        name_roles_edit = name_roles_1_edit + '#_;:)' + name_roles_2_edit
+                        name_roles_edit = name_roles_1_edit + "#_;:)" + name_roles_2_edit
 
                         update_game_in_db(
                             game_id,
@@ -280,7 +315,7 @@ def render_control_center():
                             password_edit,
                             timestamp_game_creation_stored,
                             submission_deadline,
-                            game_explanation_edit
+                            game_explanation_edit,
                         )
 
                         if not populate_plays_table(game_id, game_academic_year_edit, game_class_edit):
@@ -290,10 +325,14 @@ def render_control_center():
                         if not store_game_parameters(game_id, param1_edit, param2_edit, param3_edit, param4_edit):
                             st.error("Failed to update game parameters.")
 
-                        if (game_class_stored != game_class_edit or
-                            str(game_academic_year_stored) != game_academic_year_edit or
-                            params_stored[0] != param1_edit or params_stored[1] != param2_edit or
-                            params_stored[2] != param3_edit or params_stored[3] != param4_edit):
+                        if (
+                            game_class_stored != game_class_edit
+                            or str(game_academic_year_stored) != game_academic_year_edit
+                            or params_stored[0] != param1_edit
+                            or params_stored[1] != param2_edit
+                            or params_stored[2] != param3_edit
+                            or params_stored[3] != param4_edit
+                        ):
                             if different_groups_classes:
                                 for i in different_groups_classes:
                                     buy_value = int(random.uniform(param1_edit, param2_edit))
@@ -314,8 +353,8 @@ def render_control_center():
                     warning.empty()
 
         with overview_tabs[1]:
-            game_id = selected_game['game_id']
-            name_roles = selected_game['name_roles'].split('#_;:)')
+            game_id = selected_game["game_id"]
+            name_roles = selected_game["name_roles"].split("#_;:)")
             name_roles_1, name_roles_2 = name_roles[0], name_roles[1]
             teams = get_group_ids_from_game_id(game_id)
             if teams is False:
@@ -332,51 +371,55 @@ def render_control_center():
                     has_prompt = bool(prompts)
                     if not has_prompt:
                         missing_groups.append(f"Class {class_} - Group {group_id}")
-                    submissions.append({
-                        "Class": class_,
-                        "Group": group_id,
-                        "Status": "Submitted" if has_prompt else "Missing",
-                        "Last Submission": updated_at,
-                        "Prompts": prompts
-                    })
+                    submissions.append(
+                        {
+                            "Class": class_,
+                            "Group": group_id,
+                            "Status": "Submitted" if has_prompt else "Missing",
+                            "Last Submission": updated_at,
+                            "Prompts": prompts,
+                        }
+                    )
 
                 submitted_count = sum(1 for row in submissions if row["Status"] == "Submitted")
                 st.write(f"Submitted: {submitted_count} / {len(submissions)}")
                 if missing_groups:
                     st.warning("Missing submissions: " + ", ".join(missing_groups))
 
-                submissions_df = pd.DataFrame([{
-                    "Class": row["Class"],
-                    "Group": row["Group"],
-                    "Status": row["Status"],
-                    "Last Submission": (
-                        row["Last Submission"].strftime("%Y-%m-%d %H:%M")
-                        if row["Last Submission"] else ""
-                    )
-                } for row in submissions])
+                submissions_df = pd.DataFrame(
+                    [
+                        {
+                            "Class": row["Class"],
+                            "Group": row["Group"],
+                            "Status": row["Status"],
+                            "Last Submission": (
+                                row["Last Submission"].strftime("%Y-%m-%d %H:%M") if row["Last Submission"] else ""
+                            ),
+                        }
+                        for row in submissions
+                    ]
+                )
                 st.dataframe(submissions_df, use_container_width=True)
 
                 with st.expander("View Prompts"):
                     for row in submissions:
                         with st.expander(f"Class {row['Class']} - Group {row['Group']}"):
                             if row["Prompts"]:
-                                prompts = row["Prompts"].split('#_;:)')
+                                prompts = row["Prompts"].split("#_;:)")
                                 st.write(f"**{name_roles_1}:** {prompts[0].strip()}")
                                 st.write(f"**{name_roles_2}:** {prompts[1].strip()}")
                             else:
                                 st.write("No submission found.")
 
         with overview_tabs[2]:
-            game_id = selected_game['game_id']
-            name_roles = selected_game['name_roles'].split('#_;:)')
+            game_id = selected_game["game_id"]
+            name_roles = selected_game["name_roles"].split("#_;:)")
             name_roles_1, name_roles_2 = name_roles[0], name_roles[1]
 
             sim_tabs = st.tabs(["Run Simulation", "Error Chats"])
             with sim_tabs[0]:
-                saved_keys = list_user_api_keys(st.session_state.get('user_id'))
-                key_options = {
-                    key["key_name"]: key["key_id"] for key in saved_keys
-                }
+                saved_keys = list_user_api_keys(st.session_state.get("user_id"))
+                key_options = {key["key_name"]: key["key_id"] for key in saved_keys}
                 has_keys = bool(key_options)
                 if not key_options:
                     st.info("No API keys saved. Add one in Profile to run simulations.")
@@ -408,13 +451,27 @@ def render_control_center():
                     "gpt-5-nano": "Ultra-cheap for large batches; weakest negotiation quality.",
                 }
                 default_model = simulation_params["model"] if simulation_params else "gpt-4o-mini"
-                default_starting_message = simulation_params["starting_message"] if simulation_params else "Hello, shall we start the negotiation?"
+                default_starting_message = (
+                    simulation_params["starting_message"]
+                    if simulation_params
+                    else "Hello, shall we start the negotiation?"
+                )
                 default_num_turns = simulation_params["num_turns"] if simulation_params else 15
-                default_negotiation_termination = simulation_params["negotiation_termination_message"] if simulation_params else "Pleasure doing business with you"
-                default_summary_prompt = simulation_params["summary_prompt"] if simulation_params else "What was the value agreed?"
-                default_summary_termination = simulation_params["summary_termination_message"] if simulation_params else "The value agreed was"
-                default_conversation_starter = simulation_params["conversation_order"] if simulation_params else name_roles_1
-                conversation_options = [f'{name_roles_1} ➡ {name_roles_2}', f'{name_roles_2} ➡ {name_roles_1}']
+                default_negotiation_termination = (
+                    simulation_params["negotiation_termination_message"]
+                    if simulation_params
+                    else "Pleasure doing business with you"
+                )
+                default_summary_prompt = (
+                    simulation_params["summary_prompt"] if simulation_params else "What was the value agreed?"
+                )
+                default_summary_termination = (
+                    simulation_params["summary_termination_message"] if simulation_params else "The value agreed was"
+                )
+                default_conversation_starter = (
+                    simulation_params["conversation_order"] if simulation_params else name_roles_1
+                )
+                conversation_options = [f"{name_roles_1} ➡ {name_roles_2}", f"{name_roles_2} ➡ {name_roles_1}"]
                 if default_conversation_starter == "same":
                     default_conversation_starter = name_roles_1
                 elif default_conversation_starter == "opposite":
@@ -428,7 +485,7 @@ def render_control_center():
                         "Attention: Running a new simulation will erase all previous data related to the game. "
                         "This includes all group chats and all group scores."
                     )
-                    with st.form(key='cc_simulation_form'):
+                    with st.form(key="cc_simulation_form"):
                         selected_key_id = None
                         if key_options:
                             selected_label = st.selectbox(
@@ -447,7 +504,7 @@ def render_control_center():
                         )
                         max_opponents = max(len(teams) - 1, 1)
                         opponents_per_team = st.number_input(
-                            'Opponents per Team',
+                            "Opponents per Team",
                             step=1,
                             min_value=1,
                             value=max_opponents,
@@ -459,42 +516,61 @@ def render_control_center():
                         if len(teams) % 2 != 0:
                             rounds_to_run = opponents_per_team + 1
                         conversation_starter = st.radio(
-                            'Conversation Starter',
+                            "Conversation Starter",
                             conversation_options,
                             horizontal=True,
                             index=default_order_index,
                             key="cc_conversation_starter",
                         )
-                        starting_message = st.text_input('Starting Message', value=default_starting_message, key="cc_starting_message")
-                        num_turns = st.number_input('Maximum Number of Turns', step=1, min_value=1, value=int(default_num_turns), key="cc_num_turns")
+                        starting_message = st.text_input(
+                            "Starting Message", value=default_starting_message, key="cc_starting_message"
+                        )
+                        num_turns = st.number_input(
+                            "Maximum Number of Turns",
+                            step=1,
+                            min_value=1,
+                            value=int(default_num_turns),
+                            key="cc_num_turns",
+                        )
                         negotiation_termination_message = st.text_input(
-                            'Negotiation Termination Message',
+                            "Negotiation Termination Message",
                             value=default_negotiation_termination,
                             key="cc_negotiation_termination_message",
                         )
-                        summary_prompt = st.text_input('Negotiation Summary Prompt', value=default_summary_prompt, key="cc_summary_prompt")
+                        summary_prompt = st.text_input(
+                            "Negotiation Summary Prompt", value=default_summary_prompt, key="cc_summary_prompt"
+                        )
                         summary_termination_message = st.text_input(
-                            'Summary Termination Message',
+                            "Summary Termination Message",
                             value=default_summary_termination,
                             key="cc_summary_termination_message",
                         )
 
-                        submit_button = st.form_submit_button(label='Run', disabled=not has_keys)
+                        submit_button = st.form_submit_button(label="Run", disabled=not has_keys)
 
                     if submit_button:
                         resolved_api_key = None
                         if selected_key_id:
-                            resolved_api_key = get_user_api_key(st.session_state.get('user_id'), selected_key_id)
+                            resolved_api_key = get_user_api_key(st.session_state.get("user_id"), selected_key_id)
 
                         if not resolved_api_key:
                             st.error("Please select a saved API key to run the simulation.")
-                        elif resolved_api_key and model and opponents_per_team and conversation_starter and starting_message and num_turns and \
-                            negotiation_termination_message and summary_prompt and summary_termination_message:
+                        elif (
+                            resolved_api_key
+                            and model
+                            and opponents_per_team
+                            and conversation_starter
+                            and starting_message
+                            and num_turns
+                            and negotiation_termination_message
+                            and summary_prompt
+                            and summary_termination_message
+                        ):
                             status_placeholder = st.empty()
                             delete_from_round(game_id)
                             delete_negotiation_chats(game_id)
 
-                            initiator_role = conversation_starter.split(' ➡ ')[0].strip()
+                            initiator_role = conversation_starter.split(" ➡ ")[0].strip()
                             upsert_game_simulation_params(
                                 game_id=game_id,
                                 model=model,
@@ -537,9 +613,7 @@ def render_control_center():
                                     f"Round {round_num}: {team1['Name']} ({initiator_role_name}) "
                                     f"vs {team2['Name']} ({responder_role_name})"
                                 )
-                                progress_caption.caption(
-                                    f"Completed {completed_matches} of {total_matches} chats"
-                                )
+                                progress_caption.caption(f"Completed {completed_matches} of {total_matches} chats")
 
                             with st.spinner("Running negotiations..."):
                                 try:
@@ -565,7 +639,9 @@ def render_control_center():
                                     progress_header.empty()
                                     status_placeholder.empty()
                                     if is_invalid_api_key_error(e):
-                                        st.error("Your API key appears invalid or unauthorized. Update it in Profile and try again.")
+                                        st.error(
+                                            "Your API key appears invalid or unauthorized. Update it in Profile and try again."
+                                        )
                                     else:
                                         st.error(f"Simulation failed: {str(e)}")
                                     st.stop()
@@ -589,18 +665,16 @@ def render_control_center():
                             time.sleep(1)
                             warning.empty()
                 else:
-                    st.write('There must be at least two submissions in order to run a simulation.')
+                    st.write("There must be at least two submissions in order to run a simulation.")
 
             with sim_tabs[1]:
-                saved_keys = list_user_api_keys(st.session_state.get('user_id'))
-                key_options = {
-                    key["key_name"]: key["key_id"] for key in saved_keys
-                }
+                saved_keys = list_user_api_keys(st.session_state.get("user_id"))
+                key_options = {key["key_name"]: key["key_id"] for key in saved_keys}
                 has_keys = bool(key_options)
                 if not key_options:
                     st.info("No API keys saved. Add one in Profile to re-run error chats.")
 
-                st.subheader('Error Chats')
+                st.subheader("Error Chats")
                 error_matchups = get_error_matchups(game_id)
                 if error_matchups:
                     error_message = "The following negotiations were unsuccessful:\n\n"
@@ -611,7 +685,7 @@ def render_control_center():
                             error_message += f"- Round {match[0]} - Class{match[2][0]}_Group{match[2][1]} ({name_roles_1}) vs Class{match[1][0]}_Group{match[1][1]} ({name_roles_2});\n"
                     st.warning(error_message)
 
-                    with st.form(key='cc_error_form'):
+                    with st.form(key="cc_error_form"):
                         selected_key_id = None
                         if key_options:
                             selected_label = st.selectbox(
@@ -628,12 +702,12 @@ def render_control_center():
                             help="Model descriptions are shown in the dropdown. Pick the best balance of cost and quality.",
                             key="cc_error_model",
                         )
-                        submit_button = st.form_submit_button(label='Run', disabled=not has_keys)
+                        submit_button = st.form_submit_button(label="Run", disabled=not has_keys)
 
                     if submit_button:
                         resolved_api_key = None
                         if selected_key_id:
-                            resolved_api_key = get_user_api_key(st.session_state.get('user_id'), selected_key_id)
+                            resolved_api_key = get_user_api_key(st.session_state.get("user_id"), selected_key_id)
                         if not resolved_api_key:
                             st.error("Please select a saved API key to re-run error chats.")
                         elif resolved_api_key and model:
@@ -664,7 +738,9 @@ def render_control_center():
                                     )
                                 except Exception as e:
                                     if is_invalid_api_key_error(e):
-                                        st.error("Your API key appears invalid or unauthorized. Update it in Profile and try again.")
+                                        st.error(
+                                            "Your API key appears invalid or unauthorized. Update it in Profile and try again."
+                                        )
                                     else:
                                         st.error(f"Error chat run failed: {str(e)}")
                                     st.stop()
@@ -679,53 +755,77 @@ def render_control_center():
                             time.sleep(1)
                             warning.empty()
                 else:
-                    st.write('No error chats found.')
+                    st.write("No error chats found.")
 
         with overview_tabs[3]:
-            game_id = selected_game['game_id']
-            name_roles = selected_game['name_roles'].split('#_;:)')
+            game_id = selected_game["game_id"]
+            name_roles = selected_game["name_roles"].split("#_;:)")
             name_roles_1, name_roles_2 = name_roles[0], name_roles[1]
 
             round_data = get_round_data(game_id)
             has_simulation = bool(round_data)
-            access_state = "Enabled" if selected_game['available'] else "Disabled"
+            access_state = "Enabled" if selected_game["available"] else "Disabled"
             st.write(f"Student Access: {access_state}")
-            if selected_game['available']:
-                access_disabled = st.button('Disable Student Access to Negotiation Chats and Leaderboard', key="cc_disable_access")
+            if selected_game["available"]:
+                access_disabled = st.button(
+                    "Disable Student Access to Negotiation Chats and Leaderboard", key="cc_disable_access"
+                )
                 if access_disabled:
-                    update_access_to_chats(0, selected_game['game_id'])
-                    success = st.success('Student Access successfully disabled.')
+                    update_access_to_chats(0, selected_game["game_id"])
+                    success = st.success("Student Access successfully disabled.")
                     time.sleep(1)
                     success.empty()
                     st.rerun()
             else:
                 if has_simulation:
-                    access_enabled = st.button('Enable Student Access to Negotiation Chats and Leaderboard', key="cc_enable_access")
+                    access_enabled = st.button(
+                        "Enable Student Access to Negotiation Chats and Leaderboard", key="cc_enable_access"
+                    )
                     if access_enabled:
-                        update_access_to_chats(1, selected_game['game_id'])
-                        success = st.success('Student Access successfully enabled.')
+                        update_access_to_chats(1, selected_game["game_id"])
+                        success = st.success("Student Access successfully enabled.")
                         time.sleep(1)
                         success.empty()
                         st.rerun()
                 else:
                     st.button(
-                        'Enable Student Access to Negotiation Chats and Leaderboard',
+                        "Enable Student Access to Negotiation Chats and Leaderboard",
                         key="cc_enable_access_disabled",
-                        disabled=True
+                        disabled=True,
                     )
                     st.info("Run a simulation to publish results.")
 
             if round_data:
                 matchups = [
-                    (round_, class_1, team_1, class_2, team_2, score_team1_role1, score_team2_role2, score_team1_role2, score_team2_role1)
+                    (
+                        round_,
+                        class_1,
+                        team_1,
+                        class_2,
+                        team_2,
+                        score_team1_role1,
+                        score_team2_role2,
+                        score_team1_role2,
+                        score_team2_role1,
+                    )
                     for round_, class_1, team_1, class_2, team_2, score_team1_role1, score_team2_role2, score_team1_role2, score_team2_role1 in round_data
                 ]
 
                 def render_matchups(matchups_to_show, selected_class, selected_group_id, summary_termination_message):
                     if not matchups_to_show:
-                        st.write('No chats found.')
+                        st.write("No chats found.")
                         return
-                    for round_, class_1, team_1, class_2, team_2, score_team1_role1, score_team2_role2, score_team1_role2, score_team2_role1 in matchups_to_show:
+                    for (
+                        round_,
+                        class_1,
+                        team_1,
+                        class_2,
+                        team_2,
+                        score_team1_role1,
+                        score_team2_role2,
+                        score_team1_role2,
+                        score_team2_role1,
+                    ) in matchups_to_show:
                         if selected_class == class_2 and selected_group_id == team_2:
                             buyer_role1 = (class_2, team_2)
                             seller_role2 = (class_1, team_1)
@@ -742,10 +842,21 @@ def render_control_center():
                         chat_buyer = buyer_details.get("transcript") if buyer_details else None
                         chat_seller = seller_details.get("transcript") if seller_details else None
 
-                        def role_scores(role1_class, role1_team, role2_class, role2_team):
-                            if role1_class == class_1 and role1_team == team_1:
-                                return score_team1_role1, score_team2_role2
-                            return score_team2_role1, score_team1_role2
+                        def role_scores(
+                            role1_class,
+                            role1_team,
+                            role2_class,
+                            role2_team,
+                            _class_1=class_1,
+                            _team_1=team_1,
+                            _score_team1_role1=score_team1_role1,
+                            _score_team2_role2=score_team2_role2,
+                            _score_team2_role1=score_team2_role1,
+                            _score_team1_role2=score_team1_role2,
+                        ):
+                            if role1_class == _class_1 and role1_team == _team_1:
+                                return _score_team1_role1, _score_team2_role2
+                            return _score_team2_role1, _score_team1_role2
 
                         header = f"Round {round_}: Class {class_1} - Group {team_1} vs Class {class_2} - Group {team_2}"
                         st.markdown(f"#### {header}")
@@ -807,8 +918,8 @@ def render_control_center():
 
                 st.markdown("### Leaderboard")
                 leaderboard = fetch_and_compute_scores_for_year_game(game_id)
-                if leaderboard and leaderboard != False:
-                    role_labels = selected_game['name_roles'].split('#_;:)')
+                if leaderboard and leaderboard:
+                    role_labels = selected_game["name_roles"].split("#_;:)")
                     role_1_label = role_labels[0]
                     role_2_label = role_labels[1]
                     leaderboard_with_position = [
@@ -836,13 +947,10 @@ def render_control_center():
                             f"Rank ({role_1_label})",
                             f"Score ({role_1_label})",
                             f"Rank ({role_2_label})",
-                            f"Score ({role_2_label})"
-                        ]
+                            f"Score ({role_2_label})",
+                        ],
                     )
-                    leaderboard_df["Avg Rounds"] = pd.to_numeric(
-                        leaderboard_df["Avg Rounds"],
-                        errors="coerce"
-                    ).round(2)
+                    leaderboard_df["Avg Rounds"] = pd.to_numeric(leaderboard_df["Avg Rounds"], errors="coerce").round(2)
                     leaderboard_df["Avg Score"] = leaderboard_df["Avg Score"].round(2)
                     leaderboard_df[f"Score ({role_1_label})"] = leaderboard_df[f"Score ({role_1_label})"].round(2)
                     leaderboard_df[f"Score ({role_2_label})"] = leaderboard_df[f"Score ({role_2_label})"].round(2)
@@ -856,7 +964,9 @@ def render_control_center():
                             "Group ID": st.column_config.NumberColumn(width="small"),
                             "Games": st.column_config.NumberColumn(width="small", help="Total games played"),
                             "Avg Rounds": st.column_config.NumberColumn(width="small", help="Average rounds per game"),
-                            "Avg Score": st.column_config.NumberColumn(width="small", help="Average score across games"),
+                            "Avg Score": st.column_config.NumberColumn(
+                                width="small", help="Average score across games"
+                            ),
                             f"Rank ({role_1_label})": st.column_config.NumberColumn(width="small"),
                             f"Score ({role_1_label})": st.column_config.NumberColumn(width="small"),
                             f"Rank ({role_2_label})": st.column_config.NumberColumn(width="small"),
@@ -864,15 +974,15 @@ def render_control_center():
                         },
                     )
 
-                    group_options = [
-                        f"Class {row['team_class']} - Group {row['team_id']}"
-                        for row in leaderboard
-                    ]
-                    selected_group = st.selectbox("Select Group to Review Chats", group_options, key="cc_results_lb_group_select")
+                    group_options = [f"Class {row['team_class']} - Group {row['team_id']}" for row in leaderboard]
+                    selected_group = st.selectbox(
+                        "Select Group to Review Chats", group_options, key="cc_results_lb_group_select"
+                    )
                     class_ = selected_group.split("Class ")[1].split(" - ")[0]
                     group_id = int(selected_group.split("Group ")[1])
                     group_matchups = [
-                        m for m in matchups
+                        m
+                        for m in matchups
                         if (m[1] == class_ and m[2] == group_id) or (m[3] == class_ and m[4] == group_id)
                     ]
                     simulation_params = get_game_simulation_params(game_id)
@@ -885,12 +995,14 @@ def render_control_center():
                 else:
                     st.write("No leaderboard available.")
             else:
-                st.write('No chats found.')
+                st.write("No chats found.")
 
     with tabs[1]:
         academic_year_class_combinations = get_academic_year_class_combinations()
         if not academic_year_class_combinations:
-            st.error("No academic year and class combinations found. Please make sure there are students in the database.")
+            st.error(
+                "No academic year and class combinations found. Please make sure there are students in the database."
+            )
             return
 
         combination_options = build_year_class_options(academic_year_class_combinations)
@@ -903,23 +1015,29 @@ def render_control_center():
                 options=["zero_sum", "prisoners_dilemma"],
                 format_func=lambda x: "Zero Sum" if x == "zero_sum" else "Prisoner's Dilemma",
                 help="Select the type of game to create. Zero-sum games are negotiation games where one player's gain is another's loss. Prisoner's dilemma games involve strategic decision making with cooperation and defection options.",
-                key="cc_game_type"
+                key="cc_game_type",
             )
 
             col1, col2 = st.columns(2)
             with col1:
-                name_roles_1 = st.text_input("Name of Minimizer Role", value='Buyer', key="cc_name_roles_1")
+                name_roles_1 = st.text_input("Name of Minimizer Role", value="Buyer", key="cc_name_roles_1")
             with col2:
-                name_roles_2 = st.text_input("Name of Maximizer Role", value='Seller', key="cc_name_roles_2")
+                name_roles_2 = st.text_input("Name of Maximizer Role", value="Seller", key="cc_name_roles_2")
 
-            st.write('')
+            st.write("")
             col1, col2, col3, col4 = st.columns(4)
             with col1:
-                param1 = st.number_input("Lower Bound for Minimizer Reservation Value", min_value=0, step=1, value=16, key="cc_param1")
+                param1 = st.number_input(
+                    "Lower Bound for Minimizer Reservation Value", min_value=0, step=1, value=16, key="cc_param1"
+                )
             with col2:
-                param2 = st.number_input("Upper Bound for Minimizer Reservation Value", min_value=0, step=1, value=25, key="cc_param2")
+                param2 = st.number_input(
+                    "Upper Bound for Minimizer Reservation Value", min_value=0, step=1, value=25, key="cc_param2"
+                )
             with col3:
-                param3 = st.number_input("Lower Bound for Maximizer Reservation Value", min_value=0, step=1, value=7, key="cc_param3")
+                param3 = st.number_input(
+                    "Lower Bound for Maximizer Reservation Value", min_value=0, step=1, value=7, key="cc_param3"
+                )
             with col4:
                 param4 = st.number_input(
                     "Upper Bound for Maximizer Reservation Value",
@@ -927,7 +1045,7 @@ def render_control_center():
                     step=1,
                     value=15,
                     key="cc_param4",
-                    help='All values are expressed in the unit mentioned in description.'
+                    help="All values are expressed in the unit mentioned in description.",
                 )
 
             selected_combination = st.selectbox(
@@ -948,15 +1066,27 @@ def render_control_center():
 
         if submit_button and not st.session_state.cc_game_creation_in_progress:
             st.session_state.cc_game_creation_in_progress = True
-            if game_name and game_explanation and name_roles_1 and name_roles_2 and selected_combination and \
-                param1 and param2 and param3 and param4 and password and deadline_date and deadline_time:
+            if (
+                game_name
+                and game_explanation
+                and name_roles_1
+                and name_roles_2
+                and selected_combination
+                and param1
+                and param2
+                and param3
+                and param4
+                and password
+                and deadline_date
+                and deadline_time
+            ):
                 creation_success = False
                 try:
-                    user_id = st.session_state.get('user_id')
+                    user_id = st.session_state.get("user_id")
                     next_game_id = get_next_game_id()
                     timestamp_game_creation = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     submission_deadline = datetime.combine(deadline_date, deadline_time)
-                    name_roles = name_roles_1 + '#_;:)' + name_roles_2
+                    name_roles = name_roles_1 + "#_;:)" + name_roles_2
 
                     store_game_in_db(
                         next_game_id,
@@ -971,7 +1101,7 @@ def render_control_center():
                         timestamp_game_creation,
                         submission_deadline,
                         game_explanation,
-                        game_type
+                        game_type,
                     )
 
                     if not populate_plays_table(next_game_id, game_academic_year, game_class):
@@ -1020,14 +1150,16 @@ def render_control_center():
 
         def show_cc_student_table():
             students_from_db = get_students_from_db()
-            students_display = students_from_db.rename(columns={
-                "user_id": "User ID",
-                "email": "Email",
-                "group_id": "Group ID",
-                "academic_year": "Academic Year",
-                "class": "Class",
-                "timestamp_user": "Created at"
-            })
+            students_display = students_from_db.rename(
+                columns={
+                    "user_id": "User ID",
+                    "email": "Email",
+                    "group_id": "Group ID",
+                    "academic_year": "Academic Year",
+                    "class": "Class",
+                    "timestamp_user": "Created at",
+                }
+            )
 
             st.session_state.cc_students = students_display
             students_display[""] = ""
@@ -1042,7 +1174,7 @@ def render_control_center():
             gb.configure_column("Academic Year", width=140)
             gb.configure_column("Class", width=80)
             gb.configure_column("Created at", width=130)
-            gb.configure_selection('single')
+            gb.configure_selection("single")
             grid_options = gb.build()
 
             data = AgGrid(
@@ -1051,7 +1183,7 @@ def render_control_center():
                 fit_columns_on_grid_load=True,
                 height=min(36 + 27 * students_display.shape[0], 300),
                 update_mode=GridUpdateMode.SELECTION_CHANGED,
-                columns_auto_size_mode=ColumnsAutoSizeMode.FIT_CONTENTS
+                columns_auto_size_mode=ColumnsAutoSizeMode.FIT_CONTENTS,
             )
             return data
 
@@ -1121,9 +1253,9 @@ def render_control_center():
                 if st.session_state.cc_selected_student is not None:
                     if len(st.session_state.cc_selected_student) != 0:
                         if isinstance(st.session_state.cc_selected_student, pd.DataFrame):
-                            user_id = st.session_state.cc_selected_student['User ID'].tolist()[0]
+                            user_id = st.session_state.cc_selected_student["User ID"].tolist()[0]
                         else:
-                            user_id = st.session_state.cc_selected_student[0]['User ID']
+                            user_id = st.session_state.cc_selected_student[0]["User ID"]
 
                         if remove_student(user_id):
                             st.success("Student removed successfully!")
@@ -1137,27 +1269,28 @@ def render_control_center():
             st.session_state.cc_remove_student = False
             st.rerun()
 
+
 # -------------------------------------------------------------------------------------------------------- #
 
 st.set_page_config("Control Panel")
 
 # Record page entry
-if 'authenticated' in st.session_state and st.session_state['authenticated']:
-    record_page_entry(st.session_state.get('user_id', 'anonymous'), 'Control Panel')
+if "authenticated" in st.session_state and st.session_state["authenticated"]:
+    record_page_entry(st.session_state.get("user_id", "anonymous"), "Control Panel")
 
 # Check if the user is authenticated
-if st.session_state['authenticated']:
+if st.session_state["authenticated"]:
 
-    if st.session_state['instructor']:
+    if st.session_state["instructor"]:
         render_control_center()
     else:
         st.title("Control Panel")
-        st.write('Page accessible only to Instructors.')
+        st.write("Page accessible only to Instructors.")
 
     # Record page exit
-    if 'authenticated' in st.session_state and st.session_state['authenticated']:
-        record_page_exit('Control Panel')
+    if "authenticated" in st.session_state and st.session_state["authenticated"]:
+        record_page_exit("Control Panel")
 
 else:
     st.title("Control Panel")
-    st.write('Please Login first. (Page accessible only to Instructors)')
+    st.write("Please Login first. (Page accessible only to Instructors)")

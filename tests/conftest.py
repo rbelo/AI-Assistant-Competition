@@ -5,12 +5,12 @@ These fixtures provide mocking for external dependencies (Streamlit, database, G
 so that unit tests can run without requiring secrets.toml or external services.
 """
 
-import pytest
 import sys
 import types
-from unittest.mock import MagicMock, patch
 from io import StringIO
+from unittest.mock import MagicMock, patch
 
+import pytest
 
 # =============================================================================
 # Streamlit Mocking
@@ -26,8 +26,8 @@ class MockSecrets(dict):
             if isinstance(value, dict):
                 return MockSecrets(value)
             return value
-        except KeyError:
-            raise AttributeError(f"Secrets has no key '{key}'")
+        except KeyError as err:
+            raise AttributeError(f"Secrets has no key '{key}'") from err
 
 
 class MockSessionState(dict):
@@ -36,8 +36,8 @@ class MockSessionState(dict):
     def __getattr__(self, key):
         try:
             return self[key]
-        except KeyError:
-            raise AttributeError(f"Session state has no key '{key}'")
+        except KeyError as err:
+            raise AttributeError(f"Session state has no key '{key}'") from err
 
     def __setattr__(self, key, value):
         self[key] = value
@@ -53,27 +53,29 @@ def mock_secrets():
             # st.secrets is now mocked with test data
             assert st.secrets["database"]["url"] == "postgresql://test:test@localhost/test"
     """
-    secrets = MockSecrets({
-        "database": {
-            "url": "postgresql://test:test@localhost:5432/test_db",
-        },
-        "drive": {
-            "type": "service_account",
-            "project_id": "test-project",
-            "private_key_id": "test-key-id",
-            "private_key": "-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----\n",
-            "client_email": "test@test-project.iam.gserviceaccount.com",
-            "client_id": "123456789",
-            "folder_id": "test_folder_id",
-        },
-        "mail": {
-            "email": "test@example.com",
-            "api_key": "test_api_key",
-        },
-        "app": {
-            "link": "https://test-app.streamlit.app",
-        },
-    })
+    secrets = MockSecrets(
+        {
+            "database": {
+                "url": "postgresql://test:test@localhost:5432/test_db",
+            },
+            "drive": {
+                "type": "service_account",
+                "project_id": "test-project",
+                "private_key_id": "test-key-id",
+                "private_key": "-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----\n",
+                "client_email": "test@test-project.iam.gserviceaccount.com",
+                "client_id": "123456789",
+                "folder_id": "test_folder_id",
+            },
+            "mail": {
+                "email": "test@example.com",
+                "api_key": "test_api_key",
+            },
+            "app": {
+                "link": "https://test-app.streamlit.app",
+            },
+        }
+    )
 
     with patch("streamlit.secrets", secrets):
         yield secrets
@@ -88,16 +90,18 @@ def mock_session_state():
         def test_something(mock_session_state):
             assert st.session_state["authenticated"] == True
     """
-    session_state = MockSessionState({
-        "authenticated": True,
-        "instructor": False,
-        "user_id": "test_user",
-        "email": "test@example.com",
-        "current_visit_id": {},
-        "academic_year": "2024-2025",
-        "class": "TestClass",
-        "group_id": 1,
-    })
+    session_state = MockSessionState(
+        {
+            "authenticated": True,
+            "instructor": False,
+            "user_id": "test_user",
+            "email": "test@example.com",
+            "current_visit_id": {},
+            "academic_year": "2024-2025",
+            "class": "TestClass",
+            "group_id": 1,
+        }
+    )
 
     with patch("streamlit.session_state", session_state):
         yield session_state
@@ -230,14 +234,17 @@ def mock_google_auth():
     mock_service_account = MagicMock()
     mock_service_account.Credentials.from_service_account_info.return_value = mock_creds
 
-    with patch.dict(sys.modules, {
-        "google": MagicMock(),
-        "google.oauth2": MagicMock(),
-        "google.oauth2.service_account": mock_service_account,
-        "googleapiclient": MagicMock(),
-        "googleapiclient.discovery": MagicMock(),
-        "googleapiclient.http": MagicMock(),
-    }):
+    with patch.dict(
+        sys.modules,
+        {
+            "google": MagicMock(),
+            "google.oauth2": MagicMock(),
+            "google.oauth2.service_account": mock_service_account,
+            "googleapiclient": MagicMock(),
+            "googleapiclient.discovery": MagicMock(),
+            "googleapiclient.http": MagicMock(),
+        },
+    ):
         yield mock_creds
 
 
@@ -331,6 +338,7 @@ def csv_file():
             file = csv_file("user_id;email\ntest;test@test.com")
             # file is a file-like object
     """
+
     def _create_csv(content):
         file = StringIO(content)
         file.name = "test.csv"

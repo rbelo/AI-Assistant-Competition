@@ -5,9 +5,9 @@ Unit tests for negotiation chat storage in the database handler.
 import importlib
 import os
 import sys
+from unittest.mock import MagicMock, patch
 
 import pytest
-from unittest.mock import MagicMock, patch
 
 # Add streamlit directory to path for imports
 STREAMLIT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../streamlit"))
@@ -48,7 +48,7 @@ class TestNegotiationChatStorage:
                 group1_id=3,
                 group2_class="B",
                 group2_id=4,
-                transcript="chat transcript"
+                transcript="chat transcript",
             )
 
         assert result is True
@@ -56,13 +56,13 @@ class TestNegotiationChatStorage:
         query, params = cursor.execute.call_args[0]
         assert "INSERT INTO negotiation_chat" in query
         assert "ON CONFLICT" in query
-        assert params["param1"] == 1
-        assert params["param2"] == 2
-        assert params["param3"] == "A"
-        assert params["param4"] == 3
-        assert params["param5"] == "B"
-        assert params["param6"] == 4
-        assert params["param7"] == "chat transcript"
+        assert params["game_id"] == 1
+        assert params["round_number"] == 2
+        assert params["group1_class"] == "A"
+        assert params["group1_id"] == 3
+        assert params["group2_class"] == "B"
+        assert params["group2_id"] == 4
+        assert params["transcript"] == "chat transcript"
 
     @pytest.mark.unit
     def test_get_negotiation_chat_returns_transcript(self, real_database_handler):
@@ -72,12 +72,7 @@ class TestNegotiationChatStorage:
 
         with patch.object(database_handler, "get_db_connection_string", return_value="db"):
             result = database_handler.get_negotiation_chat(
-                game_id=1,
-                round_number=2,
-                group1_class="A",
-                group1_id=3,
-                group2_class="B",
-                group2_id=4
+                game_id=1, round_number=2, group1_class="A", group1_id=3, group2_class="B", group2_id=4
             )
 
         assert result == "stored transcript"
@@ -95,12 +90,7 @@ class TestNegotiationChatStorage:
 
         with patch.object(database_handler, "get_db_connection_string", return_value="db"):
             result = database_handler.get_negotiation_chat(
-                game_id=999,
-                round_number=1,
-                group1_class="X",
-                group1_id=1,
-                group2_class="Y",
-                group2_id=2
+                game_id=999, round_number=1, group1_class="X", group1_id=1, group2_class="Y", group2_id=2
             )
 
         assert result is None
@@ -156,11 +146,7 @@ class TestStudentPromptStorage:
 
         with patch.object(database_handler, "get_db_connection_string", return_value="db"):
             result = database_handler.insert_student_prompt(
-                game_id=1,
-                class_="A",
-                group_id=3,
-                prompt="prompt1#_;:)prompt2",
-                submitted_by="user123"
+                game_id=1, class_="A", group_id=3, prompt="prompt1#_;:)prompt2", submitted_by="user123"
             )
 
         assert result is True
@@ -181,10 +167,7 @@ class TestStudentPromptStorage:
 
         with patch.object(database_handler, "get_db_connection_string", return_value="db"):
             result = database_handler.insert_student_prompt(
-                game_id=1,
-                class_="A",
-                group_id=3,
-                prompt="prompt1#_;:)prompt2"
+                game_id=1, class_="A", group_id=3, prompt="prompt1#_;:)prompt2"
             )
 
         assert result is True
@@ -199,11 +182,7 @@ class TestStudentPromptStorage:
         cursor.fetchone.return_value = ("stored prompt",)
 
         with patch.object(database_handler, "get_db_connection_string", return_value="db"):
-            result = database_handler.get_student_prompt(
-                game_id=1,
-                class_="A",
-                group_id=3
-            )
+            result = database_handler.get_student_prompt(game_id=1, class_="A", group_id=3)
 
         assert result == "stored prompt"
         assert cursor.execute.called
@@ -220,10 +199,6 @@ class TestStudentPromptStorage:
         cursor.fetchone.return_value = None
 
         with patch.object(database_handler, "get_db_connection_string", return_value="db"):
-            result = database_handler.get_student_prompt(
-                game_id=999,
-                class_="X",
-                group_id=1
-            )
+            result = database_handler.get_student_prompt(game_id=999, class_="X", group_id=1)
 
         assert result is None

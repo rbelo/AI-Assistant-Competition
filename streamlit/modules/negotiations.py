@@ -1,9 +1,25 @@
 import re
-import autogen
-from .database_handler import insert_round_data, update_round_data, get_error_matchups, get_game_by_id, insert_negotiation_chat, get_student_prompt
-from .schedule import berger_schedule
-from modules.metrics_handler import record_prompt_metrics, record_prompt_submission, record_conversation_metrics, record_conversation_processing, record_deal_metrics, record_deal_analysis
 import time
+
+import autogen
+from modules.metrics_handler import (
+    record_conversation_metrics,
+    record_conversation_processing,
+    record_deal_analysis,
+    record_deal_metrics,
+    record_prompt_metrics,
+    record_prompt_submission,
+)
+
+from .database_handler import (
+    get_error_matchups,
+    get_game_by_id,
+    get_student_prompt,
+    insert_negotiation_chat,
+    insert_round_data,
+    update_round_data,
+)
+from .schedule import berger_schedule
 
 
 # Function for cleaning of the dialogue messages that may include in the message "Agent Name:"
@@ -59,7 +75,7 @@ def parse_deal_value(summary_text, summary_termination_message):
         if summary_termination_message in stripped:
             value_str = stripped.split(summary_termination_message, 1)[1].strip()
             value_str = value_str.replace("$", "").replace(",", "")
-            match = re.findall(r'-?\d+(?:[.,]\d+)?', value_str)
+            match = re.findall(r"-?\d+(?:[.,]\d+)?", value_str)
             if not match:
                 return -1
             try:
@@ -70,17 +86,22 @@ def parse_deal_value(summary_text, summary_termination_message):
     return -1
 
 
-def evaluate_deal_summary(chat_history, summary_prompt, summary_termination_message, user, summary_agent,
-                          role1_name=None, role2_name=None, history_size=4):
+def evaluate_deal_summary(
+    chat_history,
+    summary_prompt,
+    summary_termination_message,
+    user,
+    summary_agent,
+    role1_name=None,
+    role2_name=None,
+    history_size=4,
+):
     if not summary_agent or not user:
         return "", -1
 
     summary_context = _build_summary_context(chat_history, role1_name, role2_name, history_size)
     summary_eval = user.initiate_chat(
-        summary_agent,
-        clear_history=True,
-        max_turns=1,
-        message=summary_context + (summary_prompt or "")
+        summary_agent, clear_history=True, max_turns=1, message=summary_context + (summary_prompt or "")
     )
     summary_text = _extract_summary_text(summary_eval, summary_agent.name)
     return summary_text, parse_deal_value(summary_text, summary_termination_message)
@@ -101,14 +122,15 @@ def extract_summary_from_transcript(transcript, summary_termination_message):
     return summary_text, parse_deal_value(summary_text, summary_termination_message)
 
 
-def build_summary_agents(config_list, summary_termination_message, negotiation_termination_message,
-                         include_summary=False):
+def build_summary_agents(
+    config_list, summary_termination_message, negotiation_termination_message, include_summary=False
+):
     user = autogen.UserProxyAgent(
         name="User",
         llm_config=config_list,
         human_input_mode="NEVER",
         is_termination_msg=lambda msg: summary_termination_message in msg["content"],
-        code_execution_config={"work_dir": "repo", "use_docker": False}
+        code_execution_config={"work_dir": "repo", "use_docker": False},
     )
 
     summary_prefix = ""
@@ -141,7 +163,7 @@ Your response format:
 {summary_prefix}- If there is a valid agreement: '{summary_termination_message} [agreed_value]'
 - If there is no valid agreement: '{summary_termination_message} -1'
 
-Be thorough in your analysis and only report an agreement if ALL conditions are met."""
+Be thorough in your analysis and only report an agreement if ALL conditions are met.""",
     )
 
     return user, summary_agent
@@ -162,9 +184,21 @@ def parse_team_name(team_name):
     return class_part, group_part
 
 
-def create_chat(game_id, minimizer_team, maximizer_team, initiator_role_index, starting_message, num_turns,
-                summary_prompt, round_num, user, summary_agent, summary_termination_message, store_in_db=True,
-                game_type="zero-sum"):
+def create_chat(
+    game_id,
+    minimizer_team,
+    maximizer_team,
+    initiator_role_index,
+    starting_message,
+    num_turns,
+    summary_prompt,
+    round_num,
+    user,
+    summary_agent,
+    summary_termination_message,
+    store_in_db=True,
+    game_type="zero-sum",
+):
     """
     Create a negotiation chat between two teams.
 
@@ -202,22 +236,17 @@ def create_chat(game_id, minimizer_team, maximizer_team, initiator_role_index, s
     name2 = agent2.name
 
     # Add game context to agent prompts
-    if hasattr(agent1, 'system_message') and agent1.system_message:
+    if hasattr(agent1, "system_message") and agent1.system_message:
         agent1.update_system_message(game_context + agent1.system_message)
-    if hasattr(agent2, 'system_message') and agent2.system_message:
+    if hasattr(agent2, "system_message") and agent2.system_message:
         agent2.update_system_message(game_context + agent2.system_message)
 
-    chat = agent1.initiate_chat(
-        agent2,
-        clear_history=True,
-        max_turns=num_turns,
-        message=starting_message
-    )
+    chat = agent1.initiate_chat(agent2, clear_history=True, max_turns=num_turns, message=starting_message)
 
     negotiation = ""
 
-    for i, entry in enumerate(chat.chat_history):
-        clean_msg = clean_agent_message(name1, name2, entry['content'])
+    for _i, entry in enumerate(chat.chat_history):
+        clean_msg = clean_agent_message(name1, name2, entry["content"])
         formatted = f"{entry['name']}: {clean_msg}\n\n\n"
         negotiation += formatted
     summary_text = ""
@@ -263,7 +292,7 @@ def create_chat(game_id, minimizer_team, maximizer_team, initiator_role_index, s
             user_id=user.name if user else None,
             prompt=starting_message,
             response=negotiation,
-            processing_time=time.time() - start_time
+            processing_time=time.time() - start_time,
         )
         record_prompt_submission(user_id=user.name if user else None)
 
@@ -272,87 +301,27 @@ def create_chat(game_id, minimizer_team, maximizer_team, initiator_role_index, s
             user_id=user.name if user else None,
             conversation_id=f"{game_id}_{round_num}" if game_id and round_num else None,
             duration=time.time() - start_time,
-            messages_count=len(chat.chat_history) if chat else 0
+            messages_count=len(chat.chat_history) if chat else 0,
         )
-        record_conversation_processing(
-            user_id=user.name if user else None,
-            processing_time=time.time() - start_time
-        )
+        record_conversation_processing(user_id=user.name if user else None, processing_time=time.time() - start_time)
 
         # Record deal metrics if a deal was made
         if deal_value > 0:
+            team_name = minimizer_team["Name"] if minimizer_team else "unknown"
             record_deal_metrics(
                 user_id=user.name if user else None,
-                deal_id=f"{game_id}_{round_num}_{team1['Name'] if team1 else 'unknown'}",
+                deal_id=f"{game_id}_{round_num}_{team_name}",
                 value=deal_value,
-                duration=time.time() - start_time
+                duration=time.time() - start_time,
             )
             record_deal_analysis(
-                user_id=user.name if user else None,
-                deal_id=f"{game_id}_{round_num}_{team1['Name'] if team1 else 'unknown'}",
-                analysis=summary_text
+                user_id=user.name if user else None, deal_id=f"{game_id}_{round_num}_{team_name}", analysis=summary_text
             )
     except Exception as e:
         # Don't fail the whole negotiation if metrics recording fails
         print(f"Warning: Failed to record metrics: {e}")
 
     return deal_value
-
-def validate_message(message, game_type="zero-sum"):
-    """Validate agent messages based on game type"""
-    if game_type == "zero-sum":
-        # Check for valid price format
-        price_pattern = r'\$\d+'
-        return bool(re.search(price_pattern, message))
-
-    elif game_type == "prisoners_dilemma":
-        # Check for valid decision
-        decision_pattern = r'(COOPERATE|DEFECT)'
-        return bool(re.search(decision_pattern, message))
-
-    return False
-
-def create_agent_message(config_list, role, prompt, previous_messages, game_type="zero-sum"):
-    """Generate agent messages with game type specific validation"""
-    message = generate_message(config_list, role, prompt, previous_messages)
-
-    if not validate_message(message, game_type):
-        if game_type == "zero-sum":
-            return "Invalid message format. Please include a price in $ format."
-        elif game_type == "prisoners_dilemma":
-            return "Invalid message format. Please explicitly state COOPERATE or DEFECT."
-
-    return message
-
-# In modules/negotiations.py
-
-def calculate_score(agent_1_msg, agent_2_msg, agent_1_value, agent_2_value, game_type="zero-sum"):
-    """Calculate scores based on game type"""
-    if game_type == "zero-sum":
-        # Extract price from messages
-        price = extract_price(agent_1_msg) or extract_price(agent_2_msg)
-        if not price:
-            return None
-
-        return {
-            "minimizer_score": agent_1_value - price,
-            "maximizer_score": price - agent_2_value
-        }
-
-    elif game_type == "prisoners_dilemma":
-        # Extract decisions
-        decision1 = "COOPERATE" in agent_1_msg.upper()
-        decision2 = "COOPERATE" in agent_2_msg.upper()
-
-        # Prisoner's dilemma payoff matrix
-        if decision1 and decision2:  # Both cooperate
-            return {"player1_score": 3, "player2_score": 3}
-        elif not decision1 and not decision2:  # Both defect
-            return {"player1_score": 1, "player2_score": 1}
-        elif decision1:  # 1 cooperates, 2 defects
-            return {"player1_score": 0, "player2_score": 5}
-        else:  # 1 defects, 2 cooperates
-            return {"player1_score": 5, "player2_score": 0}
 
 
 def compute_deal_scores(deal, maximizer_value, minimizer_value, precision=4):
@@ -427,8 +396,6 @@ def get_minimizer_maximizer(initiator_team, responder_team, initiator_role_index
     return responder_team, initiator_team
 
 
-
-
 def is_valid_termination(msg, history, negotiation_termination_message):
     """
     Enhanced termination check that verifies legitimate agreement conclusion
@@ -439,42 +406,49 @@ def is_valid_termination(msg, history, negotiation_termination_message):
 
     if not history:
         return True
-        
+
     # Get the last few messages for context
     last_messages = history[-4:] if len(history) >= 4 else history
-    
+
     # Check for agreement patterns
     agreement_indicators = [
-        "agree", "accepted", "deal", "settled", "confirmed",
-        "final", "conclude", "complete", "done"
+        "agree",
+        "accepted",
+        "deal",
+        "settled",
+        "confirmed",
+        "final",
+        "conclude",
+        "complete",
+        "done",
     ]
-    
+
     # Count agreement indicators in recent messages
-    agreement_count = sum(1 for m in last_messages 
-                         if any(indicator in m["content"].lower() 
-                               for indicator in agreement_indicators))
-    
+    agreement_count = sum(
+        1 for m in last_messages if any(indicator in m["content"].lower() for indicator in agreement_indicators)
+    )
+
     # Require at least 2 agreement indicators in recent messages
     if agreement_count < 2:
         return False
-        
+
     # Check for value consistency
     values = []
     for m in last_messages:
         # Extract numeric values from messages, handling different formats
         # Remove currency symbols and commas
         clean_content = m["content"].replace("$", "").replace(",", "")
-        numbers = re.findall(r'-?\d+(?:\.\d+)?', clean_content)
+        numbers = re.findall(r"-?\d+(?:\.\d+)?", clean_content)
         if numbers:
             values.extend([float(n) for n in numbers])
-    
+
     # If we found values, check if they're consistent
     if values:
         # Values should be within 5% of each other
         max_diff = max(values) * 0.05
         if max(values) - min(values) > max_diff:
             return False
-    
+
     return True
 
 
@@ -497,6 +471,7 @@ def is_invalid_api_key_error(error):
         or "401" in message
     )
 
+
 def create_agents(game_id, teams, values, name_roles, config_list, negotiation_termination_message):
     team_info = []
 
@@ -515,39 +490,43 @@ def create_agents(game_id, teams, values, name_roles, config_list, negotiation_t
             if not submission:
                 raise Exception(f"No submission found for team {team}")
 
-            value_dict = next((value for value in values if value["class"] == team[0] and int(value["group_id"]) == team[1]), None)
+            value_dict = next(
+                (value for value in values if value["class"] == team[0] and int(value["group_id"]) == team[1]), None
+            )
             if value_dict is None:
                 raise Exception(f"No value found for team {team}")
             value1 = int(value_dict["minimizer_value"])
             value2 = int(value_dict["maximizer_value"])
 
-            prompts = [part.strip() for part in submission.split('#_;:)')]
+            prompts = [part.strip() for part in submission.split("#_;:)")]
 
             # Create a closure to capture chat history
             def create_termination_check(history):
                 return lambda msg: is_valid_termination(msg, history, negotiation_termination_message)
 
-            new_team = {"Name": f'Class{team[0]}_Group{team[1]}',
-                        "Value 1": value1,  # value as role_1
-                        "Value 2": value2,  # value as role_2
-                        "Agent 1": autogen.ConversableAgent(
-                            name=f"Class{team[0]}_Group{team[1]}_{role_1}",
-                            llm_config=config_list,
-                            human_input_mode="NEVER",
-                            chat_messages=None,
-                            system_message=prompts[0] + f" When the negotiation is finished, say {negotiation_termination_message}. This is a short conversation, you will have about 10 opportunities to intervene. Try to keep your answers concise, try not to go over {words} words.",
-                            is_termination_msg=create_termination_check([])
-                        ),
-
-                        "Agent 2": autogen.ConversableAgent(
-                            name=f"Class{team[0]}_Group{team[1]}_{role_2}",
-                            llm_config=config_list,
-                            human_input_mode="NEVER",
-                            chat_messages=None,
-                            system_message=prompts[1] + f' When the negotiation is finished, say {negotiation_termination_message}. This is a short conversation, you will have about 10 opportunities to intervene. Try to keep your answers concise, try not to go over {words} words.',
-                            is_termination_msg=create_termination_check([])
-                        )
-                        }
+            new_team = {
+                "Name": f"Class{team[0]}_Group{team[1]}",
+                "Value 1": value1,  # value as role_1
+                "Value 2": value2,  # value as role_2
+                "Agent 1": autogen.ConversableAgent(
+                    name=f"Class{team[0]}_Group{team[1]}_{role_1}",
+                    llm_config=config_list,
+                    human_input_mode="NEVER",
+                    chat_messages=None,
+                    system_message=prompts[0]
+                    + f" When the negotiation is finished, say {negotiation_termination_message}. This is a short conversation, you will have about 10 opportunities to intervene. Try to keep your answers concise, try not to go over {words} words.",
+                    is_termination_msg=create_termination_check([]),
+                ),
+                "Agent 2": autogen.ConversableAgent(
+                    name=f"Class{team[0]}_Group{team[1]}_{role_2}",
+                    llm_config=config_list,
+                    human_input_mode="NEVER",
+                    chat_messages=None,
+                    system_message=prompts[1]
+                    + f" When the negotiation is finished, say {negotiation_termination_message}. This is a short conversation, you will have about 10 opportunities to intervene. Try to keep your answers concise, try not to go over {words} words.",
+                    is_termination_msg=create_termination_check([]),
+                ),
+            }
 
             team_info.append(new_team)
         except Exception as e:
@@ -557,10 +536,22 @@ def create_agents(game_id, teams, values, name_roles, config_list, negotiation_t
     return team_info
 
 
-def create_chats(game_id, config_list, name_roles, conversation_order, teams, values, num_rounds, starting_message,
-                 num_turns, negotiation_termination_message, summary_prompt, summary_termination_message,
-                 progress_callback=None):
-    schedule = berger_schedule([f'Class{i[0]}_Group{i[1]}' for i in teams], num_rounds)
+def create_chats(
+    game_id,
+    config_list,
+    name_roles,
+    conversation_order,
+    teams,
+    values,
+    num_rounds,
+    starting_message,
+    num_turns,
+    negotiation_termination_message,
+    summary_prompt,
+    summary_termination_message,
+    progress_callback=None,
+):
+    schedule = berger_schedule([f"Class{i[0]}_Group{i[1]}" for i in teams], num_rounds)
 
     team_info = create_agents(game_id, teams, values, name_roles, config_list, negotiation_termination_message)
     initiator_role_index = resolve_initiator_role_index(name_roles, conversation_order)
@@ -736,14 +727,24 @@ def create_chats(game_id, config_list, name_roles, conversation_order, teams, va
         return error_message
 
 
-def create_all_error_chats(game_id, config_list, name_roles, conversation_order, values, starting_message, num_turns,
-                           negotiation_termination_message, summary_prompt, summary_termination_message):
+def create_all_error_chats(
+    game_id,
+    config_list,
+    name_roles,
+    conversation_order,
+    values,
+    starting_message,
+    num_turns,
+    negotiation_termination_message,
+    summary_prompt,
+    summary_termination_message,
+):
     matches = get_error_matchups(game_id)
 
     teams1 = [i[1] for i in matches]
     teams2 = [i[2] for i in matches]
 
-    unique_teams = set(tuple(item) for item in (teams1 + teams2))
+    unique_teams = {tuple(item) for item in (teams1 + teams2)}
     teams = [list(team) for team in unique_teams]
 
     team_info = create_agents(game_id, teams, values, name_roles, config_list, negotiation_termination_message)

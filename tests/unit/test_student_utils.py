@@ -4,12 +4,12 @@ Unit tests for student_utils module.
 Tests CSV processing and column normalization logic.
 """
 
-import pytest
-import pandas as pd
-from io import StringIO
-import sys
 import os
+import sys
 from unittest.mock import MagicMock
+
+import pandas as pd
+import pytest
 
 # Add streamlit directory to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../streamlit")))

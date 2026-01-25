@@ -8,11 +8,20 @@ This module adds a playground feature to the platform, allowing students to:
 4. View and analyze results without affecting official game scores
 """
 
-import streamlit as st
 import re
+
 import autogen
-from .database_handler import get_group_id_from_user_id, get_class_from_user_id, insert_playground_result, get_playground_results
-from .negotiations import is_valid_termination, build_llm_config, is_invalid_api_key_error
+
+import streamlit as st
+
+from .database_handler import (
+    get_class_from_user_id,
+    get_group_id_from_user_id,
+    get_playground_results,
+    insert_playground_result,
+)
+from .negotiations import build_llm_config, is_invalid_api_key_error, is_valid_termination
+
 
 # Function for cleaning dialogue messages to remove agent name prefixes
 def clean_agent_message(agent_name_1, agent_name_2, message):
@@ -29,10 +38,18 @@ def clean_agent_message(agent_name_1, agent_name_2, message):
 
 
 # Function to create and run test negotiations
-def run_playground_negotiation(role1_prompt, role2_prompt, role1_name, role2_name,
-                               starting_message, num_turns, api_key, model="gpt-4o-mini",
-                               conversation_starter=None,
-                               negotiation_termination_message="Pleasure doing business with you"):
+def run_playground_negotiation(
+    role1_prompt,
+    role2_prompt,
+    role1_name,
+    role2_name,
+    starting_message,
+    num_turns,
+    api_key,
+    model="gpt-4o-mini",
+    conversation_starter=None,
+    negotiation_termination_message="Pleasure doing business with you",
+):
     # Configure agents
     config_list = build_llm_config(model, api_key)
 
@@ -45,8 +62,9 @@ def run_playground_negotiation(role1_prompt, role2_prompt, role1_name, role2_nam
         llm_config=config_list,
         human_input_mode="NEVER",
         chat_messages=None,
-        system_message=role1_prompt + f" When the negotiation is finished, say {negotiation_termination_message}. This is a short conversation, you will have about {num_turns} opportunities to intervene.",
-        is_termination_msg=create_termination_check([])
+        system_message=role1_prompt
+        + f" When the negotiation is finished, say {negotiation_termination_message}. This is a short conversation, you will have about {num_turns} opportunities to intervene.",
+        is_termination_msg=create_termination_check([]),
     )
 
     role2_agent = autogen.ConversableAgent(
@@ -54,8 +72,9 @@ def run_playground_negotiation(role1_prompt, role2_prompt, role1_name, role2_nam
         llm_config=config_list,
         human_input_mode="NEVER",
         chat_messages=None,
-        system_message=role2_prompt + f" When the negotiation is finished, say {negotiation_termination_message}. This is a short conversation, you will have about {num_turns} opportunities to intervene.",
-        is_termination_msg=create_termination_check([])
+        system_message=role2_prompt
+        + f" When the negotiation is finished, say {negotiation_termination_message}. This is a short conversation, you will have about {num_turns} opportunities to intervene.",
+        is_termination_msg=create_termination_check([]),
     )
 
     # Initialize chat
@@ -75,17 +94,15 @@ def run_playground_negotiation(role1_prompt, role2_prompt, role1_name, role2_nam
     # Process chat history for display
     negotiation_text = ""
     for i in range(len(chat.chat_history)):
-        clean_msg = clean_agent_message(role1_agent.name, role2_agent.name,
-                                        chat.chat_history[i]['content'])
-        formatted_msg = chat.chat_history[i]['name'] + ': ' + clean_msg + '\n\n'
+        clean_msg = clean_agent_message(role1_agent.name, role2_agent.name, chat.chat_history[i]["content"])
+        formatted_msg = chat.chat_history[i]["name"] + ": " + clean_msg + "\n\n"
         negotiation_text += formatted_msg
 
     return negotiation_text, chat.chat_history
 
 
 # Save playground negotiation results for future reference
-def save_playground_results(user_id, class_, group_id, role1_name, role2_name,
-                            negotiation_text, model=None):
+def save_playground_results(user_id, class_, group_id, role1_name, role2_name, negotiation_text, model=None):
     return insert_playground_result(
         user_id=user_id,
         class_=class_,
@@ -107,12 +124,12 @@ def display_student_playground():
     st.title("AI Agent Playground")
 
     # Check if user is authenticated
-    if not st.session_state.get('authenticated', False):
+    if not st.session_state.get("authenticated", False):
         st.warning("Please login first to access the Playground.")
         return
 
     # Get user details
-    user_id = st.session_state.get('user_id', '')
+    user_id = st.session_state.get("user_id", "")
     class_ = get_class_from_user_id(user_id)
     group_id = get_group_id_from_user_id(user_id)
 
@@ -135,14 +152,20 @@ def display_student_playground():
             with col1:
                 role1_name = st.text_input("Role 1 Name", value="Buyer")
                 role1_value = st.number_input("Role 1 Reservation Value", value=20)
-                role1_prompt = st.text_area("Role 1 Prompt", height=200,
-                                            value=f"You are a buyer negotiating to purchase an item. Your reservation value is {role1_value}, which means you won't pay more than this amount. Try to negotiate the lowest price possible.")
+                role1_prompt = st.text_area(
+                    "Role 1 Prompt",
+                    height=200,
+                    value=f"You are a buyer negotiating to purchase an item. Your reservation value is {role1_value}, which means you won't pay more than this amount. Try to negotiate the lowest price possible.",
+                )
 
             with col2:
                 role2_name = st.text_input("Role 2 Name", value="Seller")
                 role2_value = st.number_input("Role 2 Reservation Value", value=10)
-                role2_prompt = st.text_area("Role 2 Prompt", height=200,
-                                            value=f"You are a seller negotiating to sell an item. Your reservation value is {role2_value}, which means you won't accept less than this amount. Try to negotiate the highest price possible.")
+                role2_prompt = st.text_area(
+                    "Role 2 Prompt",
+                    height=200,
+                    value=f"You are a seller negotiating to sell an item. Your reservation value is {role2_value}, which means you won't accept less than this amount. Try to negotiate the highest price possible.",
+                )
 
             st.subheader("Negotiation Settings")
             conversation_options = [f"{role1_name} ➡ {role2_name}", f"{role2_name} ➡ {role1_name}"]
@@ -177,8 +200,14 @@ def display_student_playground():
             with st.spinner("Running negotiation test..."):
                 try:
                     negotiation_text, chat_history = run_playground_negotiation(
-                        role1_prompt, role2_prompt, role1_name, role2_name,
-                        starting_message, num_turns, api_key, model,
+                        role1_prompt,
+                        role2_prompt,
+                        role1_name,
+                        role2_name,
+                        starting_message,
+                        num_turns,
+                        api_key,
+                        model,
                         conversation_starter.split(" ➡ ")[0].strip(),
                     )
 
@@ -190,8 +219,7 @@ def display_student_playground():
                     # Save results if requested
                     if save_results:
                         result_id = save_playground_results(
-                            user_id, class_, group_id, role1_name, role2_name,
-                            negotiation_text, model=model
+                            user_id, class_, group_id, role1_name, role2_name, negotiation_text, model=model
                         )
                         if result_id:
                             st.success(f"Results saved successfully! Reference ID: {result_id}")

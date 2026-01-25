@@ -8,7 +8,7 @@ STREAMLIT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../
 if STREAMLIT_PATH not in sys.path:
     sys.path.insert(0, STREAMLIT_PATH)
 
-from modules.negotiations import compute_deal_scores
+from modules.negotiations import compute_deal_scores  # noqa: E402
 
 
 def test_compute_deal_scores_invalid_deal():
