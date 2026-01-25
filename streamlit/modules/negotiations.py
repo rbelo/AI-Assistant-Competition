@@ -20,6 +20,118 @@ def clean_agent_message(agent_name_1, agent_name_2, message):
     return clean_message
 
 
+def _build_summary_context(chat_history, role1_name=None, role2_name=None, history_size=4):
+    if not chat_history:
+        return ""
+
+    if history_size is None:
+        recent_history = chat_history
+    else:
+        recent_history = chat_history[-history_size:] if history_size else []
+
+    summary_context = ""
+    for entry in recent_history:
+        content = entry.get("content", "")
+        if role1_name and role2_name:
+            content = clean_agent_message(role1_name, role2_name, content)
+        summary_context += f"{entry.get('name', '')}: {content}\n\n\n"
+    return summary_context
+
+
+def _extract_summary_text(summary_eval, summary_agent_name):
+    if not summary_eval or not getattr(summary_eval, "chat_history", None):
+        return ""
+
+    for entry in reversed(summary_eval.chat_history):
+        if entry.get("name") == summary_agent_name and entry.get("content"):
+            return entry["content"]
+
+    last_entry = summary_eval.chat_history[-1]
+    return last_entry.get("content", "") if last_entry else ""
+
+
+def parse_deal_value(summary_text, summary_termination_message):
+    if not summary_text or not summary_termination_message:
+        return -1
+
+    for line in summary_text.splitlines():
+        stripped = line.strip()
+        if summary_termination_message in stripped:
+            value_str = stripped.split(summary_termination_message, 1)[1].strip()
+            value_str = value_str.replace("$", "").replace(",", "")
+            match = re.findall(r'-?\d+(?:[.,]\d+)?', value_str)
+            if not match:
+                return -1
+            try:
+                return float(match[0].replace(",", "."))
+            except Exception:
+                return -1
+
+    return -1
+
+
+def evaluate_deal_summary(chat_history, summary_prompt, summary_termination_message, user, summary_agent,
+                          role1_name=None, role2_name=None, history_size=4):
+    if not summary_agent or not user:
+        return "", -1
+
+    summary_context = _build_summary_context(chat_history, role1_name, role2_name, history_size)
+    summary_eval = user.initiate_chat(
+        summary_agent,
+        clear_history=True,
+        max_turns=1,
+        message=summary_context + (summary_prompt or "")
+    )
+    summary_text = _extract_summary_text(summary_eval, summary_agent.name)
+    return summary_text, parse_deal_value(summary_text, summary_termination_message)
+
+
+def build_summary_agents(config_list, summary_termination_message, negotiation_termination_message,
+                         include_summary=False):
+    user = autogen.UserProxyAgent(
+        name="User",
+        llm_config=config_list,
+        human_input_mode="NEVER",
+        is_termination_msg=lambda msg: summary_termination_message in msg["content"],
+        code_execution_config={"work_dir": "repo", "use_docker": False}
+    )
+
+    summary_prefix = ""
+    if include_summary:
+        summary_prefix = "Provide a concise 2-3 sentence summary before the final line.\n"
+
+    summary_agent = autogen.AssistantAgent(
+        name="Summary_Agent",
+        llm_config=config_list,
+        human_input_mode="NEVER",
+        is_termination_msg=lambda msg: summary_termination_message in msg["content"],
+        system_message=f"""You are a sophisticated negotiation analyzer. Your task is to determine if a negotiation has reached a valid agreement.
+
+Key Requirements:
+1. Analyze the ENTIRE conversation, not just the last few messages
+2. Look for explicit agreement on a specific value from BOTH parties
+3. Verify that the agreed value is consistent throughout the conversation
+4. Check for confirmation messages from both parties
+5. Ensure the negotiation follows a natural flow and reaches a legitimate conclusion
+6. Consider the negotiation context and expected value ranges
+
+To determine if there is a valid agreement:
+- Both parties must explicitly agree on the same value
+- The agreement must be confirmed by both parties
+- The conversation must end naturally with {negotiation_termination_message}
+- The agreement must be consistent with the negotiation context
+- There must be no contradictions or retractions of the agreement
+
+Your response format:
+{summary_prefix}- If there is a valid agreement: '{summary_termination_message} [agreed_value]'
+- If there is no valid agreement: '{summary_termination_message} -1'
+
+Be thorough in your analysis and only report an agreement if ALL conditions are met."""
+    )
+
+    return user, summary_agent
+
+
 def parse_team_name(team_name):
     if not team_name:
         return None, None
@@ -88,25 +200,26 @@ def create_chat(game_id, minimizer_team, maximizer_team, initiator_role_index, s
     )
 
     negotiation = ""
-    summ = ""
 
     for i, entry in enumerate(chat.chat_history):
         clean_msg = clean_agent_message(name1, name2, entry['content'])
         formatted = f"{entry['name']}: {clean_msg}\n\n\n"
         negotiation += formatted
-        if i >= len(chat.chat_history) - 4:
-            summ += formatted
-
-    deal_str = ""
+    summary_text = ""
+    deal_value = -1
     if summary_agent and user:
-        summary_eval = user.initiate_chat(
+        summary_text, deal_value = evaluate_deal_summary(
+            chat.chat_history,
+            summary_prompt,
+            summary_termination_message,
+            user,
             summary_agent,
-            clear_history=True,
-            max_turns=1,
-            message=summ + summary_prompt
+            role1_name=name1,
+            role2_name=name2,
+            history_size=4,
         )
-        deal_str = summary_eval.chat_history[1]['content']
-        negotiation += "\n" + deal_str
+        if summary_text:
+            negotiation += "\n" + summary_text
 
     if store_in_db and minimizer_team and maximizer_team and game_id and round_num is not None:
         class1, group1 = parse_team_name(minimizer_team["Name"])
@@ -126,17 +239,6 @@ def create_chat(game_id, minimizer_team, maximizer_team, initiator_role_index, s
                 print(f"Warning: Failed to store negotiation chat: {e}")
 
     # Parse the result value
-    deal_value = -1  # Default to -1 (failed negotiation)
-    if summary_termination_message and deal_str.startswith(summary_termination_message):
-        try:
-            # Clean the value string before parsing
-            value_str = deal_str.replace(summary_termination_message, "").strip()
-            value_str = value_str.replace("$", "").replace(",", "")
-            deal_value = float(re.findall(r'-?\d+(?:[.,]\d+)?', value_str)[0].replace(",", "."))
-        except Exception as e:
-            print(f"Error parsing deal value: {str(e)}")
-            deal_value = -1
-
     # Record metrics (with safe defaults for optional values)
     start_time = time.time()
     try:
@@ -171,7 +273,7 @@ def create_chat(game_id, minimizer_team, maximizer_team, initiator_role_index, s
             record_deal_analysis(
                 user_id=user.name if user else None,
                 deal_id=f"{game_id}_{round_num}_{team1['Name'] if team1 else 'unknown'}",
-                analysis=deal_str
+                analysis=summary_text
             )
     except Exception as e:
         # Don't fail the whole negotiation if metrics recording fails
@@ -245,8 +347,10 @@ def compute_deal_scores(deal, maximizer_value, minimizer_value, precision=4):
     If maximizer_value >= minimizer_value, there is no overlap; only deals outside
     both reservations score, otherwise (0, 0).
     """
-    if deal is None or deal == -1:
+    if deal is None:
         return 0, 0
+    if deal == -1:
+        return -1, -1
 
     if maximizer_value < minimizer_value:
         if deal < maximizer_value:
@@ -315,6 +419,9 @@ def is_valid_termination(msg, history, negotiation_termination_message):
     # Check for termination phrase
     if negotiation_termination_message not in msg["content"]:
         return False
+
+    if not history:
+        return True
         
     # Get the last few messages for context
     last_messages = history[-4:] if len(history) >= 4 else history
@@ -423,41 +530,11 @@ def create_chats(game_id, config_list, name_roles, conversation_order, teams, va
     initiator_role_name = name_roles[initiator_role_index - 1]
     responder_role_name = name_roles[1 if initiator_role_index == 1 else 0]
 
-    user = autogen.UserProxyAgent(
-        name="User",
-        llm_config=config_list,
-        human_input_mode="NEVER",
-        is_termination_msg=lambda msg: summary_termination_message in msg["content"],
-        code_execution_config={"work_dir": "repo", "use_docker": False}
-    )
-
-    summary_agent = autogen.AssistantAgent(
-        name="Summary_Agent",
-        llm_config=config_list,
-        human_input_mode="NEVER",
-        is_termination_msg=lambda msg: summary_termination_message in msg["content"],
-        system_message=f"""You are a sophisticated negotiation analyzer. Your task is to determine if a negotiation has reached a valid agreement.
-
-Key Requirements:
-1. Analyze the ENTIRE conversation, not just the last few messages
-2. Look for explicit agreement on a specific value from BOTH parties
-3. Verify that the agreed value is consistent throughout the conversation
-4. Check for confirmation messages from both parties
-5. Ensure the negotiation follows a natural flow and reaches a legitimate conclusion
-6. Consider the negotiation context and expected value ranges
-
-To determine if there is a valid agreement:
-- Both parties must explicitly agree on the same value
-- The agreement must be confirmed by both parties
-- The conversation must end naturally with {negotiation_termination_message}
-- The agreement must be consistent with the negotiation context
-- There must be no contradictions or retractions of the agreement
-
-Your response format:
-- If there is a valid agreement: '{summary_termination_message} [agreed_value]'
-- If there is no valid agreement: '{summary_termination_message} -1'
-
-Be thorough in your analysis and only report an agreement if ALL conditions are met."""
+    user, summary_agent = build_summary_agents(
+        config_list,
+        summary_termination_message,
+        negotiation_termination_message,
+        include_summary=False,
     )
 
     max_retries = 10
@@ -483,7 +560,7 @@ Be thorough in your analysis and only report an agreement if ALL conditions are 
             class2 = class_group_2[0][5:]
             group2 = class_group_2[1][5:]
 
-            insert_round_data(game_id, round_, class1, group1, class2, group2, -1, -1, -1, -1)
+            insert_round_data(game_id, round_, class1, group1, class2, group2, None, None, None, None)
 
             if progress_callback:
                 progress_callback(round_, team1, team2, initiator_role_name, responder_role_name)
@@ -634,41 +711,11 @@ def create_all_error_chats(game_id, config_list, name_roles, conversation_order,
 
     team_info = create_agents(game_id, teams, values, name_roles, config_list, negotiation_termination_message)
     initiator_role_index = resolve_initiator_role_index(name_roles, conversation_order)
-    user = autogen.UserProxyAgent(
-        name="User",
-        llm_config=config_list,
-        human_input_mode="NEVER",
-        is_termination_msg=lambda msg: summary_termination_message in msg["content"],
-        code_execution_config={"work_dir": "repo", "use_docker": False}
-    )
-
-    summary_agent = autogen.AssistantAgent(
-        name="Summary_Agent",
-        llm_config=config_list,
-        human_input_mode="NEVER",
-        is_termination_msg=lambda msg: summary_termination_message in msg["content"],
-        system_message=f"""You are a sophisticated negotiation analyzer. Your task is to determine if a negotiation has reached a valid agreement.
-
-Key Requirements:
-1. Analyze the ENTIRE conversation, not just the last few messages
-2. Look for explicit agreement on a specific value from BOTH parties
-3. Verify that the agreed value is consistent throughout the conversation
-4. Check for confirmation messages from both parties
-5. Ensure the negotiation follows a natural flow and reaches a legitimate conclusion
-6. Consider the negotiation context and expected value ranges
-
-To determine if there is a valid agreement:
-- Both parties must explicitly agree on the same value
-- The agreement must be confirmed by both parties
-- The conversation must end naturally with {negotiation_termination_message}
-- The agreement must be consistent with the negotiation context
-- There must be no contradictions or retractions of the agreement
-
-Your response format:
-- If there is a valid agreement: '{summary_termination_message} [agreed_value]'
-- If there is no valid agreement: '{summary_termination_message} -1'
-
-Be thorough in your analysis and only report an agreement if ALL conditions are met."""
+    user, summary_agent = build_summary_agents(
+        config_list,
+        summary_termination_message,
+        negotiation_termination_message,
+        include_summary=False,
     )
 
     max_retries = 10

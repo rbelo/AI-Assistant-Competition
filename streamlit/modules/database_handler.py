@@ -1342,7 +1342,7 @@ def get_error_matchups(game_id):
             query1 = """
                 SELECT round_number, group1_class, group1_id, group2_class, group2_id, score_team1_role1, score_team2_role2, score_team1_role2, score_team2_role1
                 FROM round
-                WHERE game_id = %(param1)s AND (score_team1_role1=-1 OR score_team1_role2=-1);
+                WHERE game_id = %(param1)s AND (score_team1_role1 IS NULL OR score_team1_role2 IS NULL);
             """
 
             cur.execute(query1, {'param1': game_id})
@@ -1353,8 +1353,8 @@ def get_error_matchups(game_id):
                 aux_1 = [i[0]]
                 aux_2 = [list(i[1:3])]
                 aux_3 = [list(i[3:5])]
-                aux_4 = [1] if i[5]==-1 else [0]
-                aux_5 = [1] if i[7]==-1 else [0]
+                aux_4 = [1] if i[5] is None else [0]
+                aux_5 = [1] if i[7] is None else [0]
                 error_matchups_final.append(aux_1+aux_2+aux_3+aux_4+aux_5)
 
             return error_matchups_final

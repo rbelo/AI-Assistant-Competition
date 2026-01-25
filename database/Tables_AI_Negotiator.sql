@@ -92,10 +92,10 @@ CREATE TABLE round (
     group1_id SMALLINT NOT NULL,                                          -- ID of the first group participating in the round, cannot be null
     group2_class CHAR(1) NOT NULL,                                        -- Class of the second group participating in the round, cannot be null
     group2_id SMALLINT NOT NULL,                                          -- ID of the second group participating in the round, cannot be null
-    score_team1_role1 FLOAT NOT NULL,                                     -- Score of team 1 in a specific round with role1, cannot be null
-    score_team2_role2 FLOAT NOT NULL,                                     -- Score of team 2 in a specific round with role2, cannot be null
-    score_team1_role2 FLOAT NOT NULL,                                     -- Score of team 1 in a specific round with role2, cannot be null
-    score_team2_role1 FLOAT NOT NULL,                                     -- Score of team 2 in a specific round with role1, cannot be null
+    score_team1_role1 FLOAT,                                              -- Score of team 1 in a specific round with role1
+    score_team2_role2 FLOAT,                                              -- Score of team 2 in a specific round with role2
+    score_team1_role2 FLOAT,                                              -- Score of team 1 in a specific round with role2
+    score_team2_role1 FLOAT,                                              -- Score of team 2 in a specific round with role1
     PRIMARY KEY(game_id, round_number, group1_class, group1_id, group2_class, group2_id),     -- Set game_id, round_number, group1_class, group1_id,  group2_class and group2_id as the composite primary keys
     FOREIGN KEY(game_id) REFERENCES game(game_id)                         -- Foreign key linking to the game_id in the game table
 );

@@ -12,7 +12,7 @@ from modules.negotiations import compute_deal_scores
 
 
 def test_compute_deal_scores_invalid_deal():
-    assert compute_deal_scores(-1, 20, 10) == (0, 0)
+    assert compute_deal_scores(-1, 20, 10) == (-1, -1)
     assert compute_deal_scores(None, 20, 10) == (0, 0)
 
 
