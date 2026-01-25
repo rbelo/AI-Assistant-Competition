@@ -663,30 +663,73 @@ def get_round_data(game_id):
         return False
 
 # Function to store a negotiation chat transcript
-def insert_negotiation_chat(game_id, round_number, group1_class, group1_id, group2_class, group2_id, transcript):
+def insert_negotiation_chat(
+    game_id,
+    round_number,
+    group1_class,
+    group1_id,
+    group2_class,
+    group2_id,
+    transcript,
+    summary=None,
+    deal_value=None,
+):
     conn = get_connection()
     if not conn:
         return False
     try:
         with conn.cursor() as cur:
-            query = """
+            cur.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = 'negotiation_chat';
+                """
+            )
+            columns = {row[0] for row in cur.fetchall()}
+
+            insert_cols = [
+                "game_id",
+                "round_number",
+                "group1_class",
+                "group1_id",
+                "group2_class",
+                "group2_id",
+                "transcript",
+            ]
+            values = {
+                'game_id': game_id,
+                'round_number': round_number,
+                'group1_class': group1_class,
+                'group1_id': group1_id,
+                'group2_class': group2_class,
+                'group2_id': group2_id,
+                'transcript': transcript,
+            }
+
+            update_cols = ["transcript = EXCLUDED.transcript"]
+            if "summary" in columns:
+                insert_cols.append("summary")
+                values["summary"] = summary
+                update_cols.append("summary = EXCLUDED.summary")
+            if "deal_value" in columns:
+                insert_cols.append("deal_value")
+                values["deal_value"] = deal_value
+                update_cols.append("deal_value = EXCLUDED.deal_value")
+
+            cols_sql = ", ".join(insert_cols)
+            params_sql = ", ".join(f"%({col})s" for col in insert_cols)
+            update_sql = ", ".join(update_cols + ["updated_at = CURRENT_TIMESTAMP"])
+            query = f"""
                 INSERT INTO negotiation_chat (
-                    game_id, round_number, group1_class, group1_id, group2_class, group2_id, transcript
+                    {cols_sql}
                 )
-                VALUES (%(param1)s, %(param2)s, %(param3)s, %(param4)s, %(param5)s, %(param6)s, %(param7)s)
+                VALUES ({params_sql})
                 ON CONFLICT (game_id, round_number, group1_class, group1_id, group2_class, group2_id)
-                DO UPDATE SET transcript = EXCLUDED.transcript, updated_at = CURRENT_TIMESTAMP;
+                DO UPDATE SET {update_sql};
             """
 
-            cur.execute(query, {
-                'param1': game_id,
-                'param2': round_number,
-                'param3': group1_class,
-                'param4': group1_id,
-                'param5': group2_class,
-                'param6': group2_id,
-                'param7': transcript
-            })
+            cur.execute(query, values)
 
             conn.commit()
             return True
@@ -719,6 +762,54 @@ def get_negotiation_chat(game_id, round_number, group1_class, group1_id, group2_
 
             row = cur.fetchone()
             return row[0] if row else None
+    except Exception:
+        return None
+
+
+def get_negotiation_chat_details(game_id, round_number, group1_class, group1_id, group2_class, group2_id):
+    conn = get_connection()
+    if not conn:
+        return None
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = 'negotiation_chat';
+                """
+            )
+            columns = {row[0] for row in cur.fetchall()}
+            select_cols = ["transcript"]
+            if "summary" in columns:
+                select_cols.append("summary")
+            if "deal_value" in columns:
+                select_cols.append("deal_value")
+            cols_sql = ", ".join(select_cols)
+            query = f"""
+                SELECT {cols_sql}
+                FROM negotiation_chat
+                WHERE game_id = %(param1)s AND round_number = %(param2)s
+                AND group1_class = %(param3)s AND group1_id = %(param4)s
+                AND group2_class = %(param5)s AND group2_id = %(param6)s;
+            """
+            cur.execute(query, {
+                'param1': game_id,
+                'param2': round_number,
+                'param3': group1_class,
+                'param4': group1_id,
+                'param5': group2_class,
+                'param6': group2_id,
+            })
+            row = cur.fetchone()
+            if not row:
+                return None
+            row_data = dict(zip(select_cols, row))
+            return {
+                "transcript": row_data.get("transcript"),
+                "summary": row_data.get("summary"),
+                "deal_value": row_data.get("deal_value"),
+            }
     except Exception:
         return None
 

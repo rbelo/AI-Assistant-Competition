@@ -10,6 +10,7 @@ from modules.negotiations import (
     build_summary_agents,
     evaluate_deal_summary,
 )
+from modules.negotiation_display import render_chat_summary
 from modules.sidebar import render_sidebar
 
 # Set page configuration
@@ -221,28 +222,17 @@ else:
                         # Display results
                         st.success("Test negotiation completed!")
                         st.subheader("Negotiation Results")
-                        st.text_area("Negotiation Transcript", negotiation_text, height=400)
-                        st.subheader("Negotiation Summary")
-                        if summary_text:
-                            st.write(summary_text)
-                        else:
-                            st.info("Summary unavailable for this run.")
-
-                        if deal_value is None:
-                            st.info("No deal value could be parsed for scoring.")
-                        elif deal_value == -1 or score_role1 == -1 or score_role2 == -1:
-                            st.info("No valid agreement detected.")
-                            col1, col2 = st.columns(2)
-                            col1.metric(f"{role1_name} Score", "0.0")
-                            col2.metric(f"{role2_name} Score", "0.0")
-                        else:
-                            col1, col2, col3 = st.columns(3)
-                            col1.metric("Agreed Value", f"{deal_value:.2f}")
-                            col2.metric(f"{role1_name} Score", f"{score_role1 * 100:.1f}")
-                            col3.metric(f"{role2_name} Score", f"{score_role2 * 100:.1f}")
-                            st.caption(
-                                "Scores assume Role 1 is the minimizer and Role 2 is the maximizer."
-                            )
+                        render_chat_summary(
+                            summary_text,
+                            deal_value,
+                            score_role1,
+                            score_role2,
+                            role1_name,
+                            role2_name,
+                            negotiation_text,
+                            transcript_label="View full transcript",
+                            transcript_expanded=True,
+                        )
 
                         # Save results if requested
                         if save_results:
@@ -299,41 +289,18 @@ else:
                             st.rerun()
                         else:
                             st.error("Failed to delete test.")
-                    if test_result.get("summary"):
-                        st.markdown("**Summary**")
-                        st.write(test_result["summary"])
-                    else:
-                        st.info("Summary unavailable for this test.")
-
-                    deal_value = test_result.get("deal_value")
-                    score_role1 = test_result.get("score_role1")
-                    score_role2 = test_result.get("score_role2")
-                    if deal_value is None or score_role1 is None or score_role2 is None:
-                        st.info("Scores unavailable for this test.")
-                    elif deal_value == -1 or score_role1 == -1 or score_role2 == -1:
-                        st.info("No valid agreement detected.")
-                        col1, col2 = st.columns(2)
-                        col1.metric(f"{test_result['role1_name'] or 'Role 1'} Score", "0.0")
-                        col2.metric(f"{test_result['role2_name'] or 'Role 2'} Score", "0.0")
-                    else:
-                        col1, col2, col3 = st.columns(3)
-                        col1.metric("Agreed Value", f"{deal_value:.2f}")
-                        col2.metric(
-                            f"{test_result['role1_name'] or 'Role 1'} Score",
-                            f"{score_role1 * 100:.1f}",
-                        )
-                        col3.metric(
-                            f"{test_result['role2_name'] or 'Role 2'} Score",
-                            f"{score_role2 * 100:.1f}",
-                        )
-
-                    with st.expander("View full transcript", expanded=False):
-                        st.text_area(
-                            "Negotiation Transcript",
-                            test_result["transcript"],
-                            height=400,
-                            key=f"test_{test_result['id']}",
-                        )
+                    render_chat_summary(
+                        test_result.get("summary"),
+                        test_result.get("deal_value"),
+                        test_result.get("score_role1"),
+                        test_result.get("score_role2"),
+                        test_result.get("role1_name") or "Role 1",
+                        test_result.get("role2_name") or "Role 2",
+                        test_result.get("transcript"),
+                        transcript_label="View full transcript",
+                        transcript_expanded=False,
+                        show_heading=False,
+                    )
         else:
             st.info("You don't have any previous playground tests. Create a new test to see results here.")
 

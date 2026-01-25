@@ -109,6 +109,8 @@ CREATE TABLE negotiation_chat (
     group2_class CHAR(1) NOT NULL,
     group2_id SMALLINT NOT NULL,
     transcript TEXT NOT NULL,
+    summary TEXT,
+    deal_value FLOAT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (game_id, round_number, group1_class, group1_id, group2_class, group2_id),

@@ -7,10 +7,11 @@ import re
 from st_aggrid import GridOptionsBuilder, AgGrid, GridUpdateMode, ColumnsAutoSizeMode
 from modules.sidebar import render_sidebar
 from modules.database_handler import populate_plays_table, insert_student_data, remove_student, store_game_in_db, update_game_in_db, update_num_rounds_game, update_access_to_chats, delete_from_round, store_group_values, store_game_parameters, get_game_parameters
-from modules.database_handler import get_academic_year_class_combinations, get_game_by_id, fetch_games_data, get_next_game_id, get_students_from_db, get_group_ids_from_game_id, get_round_data, get_error_matchups, fetch_and_compute_scores_for_year_game, get_negotiation_chat
+from modules.database_handler import get_academic_year_class_combinations, get_game_by_id, fetch_games_data, get_next_game_id, get_students_from_db, get_group_ids_from_game_id, get_round_data, get_error_matchups, fetch_and_compute_scores_for_year_game, get_negotiation_chat_details
 from modules.database_handler import get_all_group_values, get_student_prompt, get_student_prompt_with_timestamp, upsert_game_simulation_params, get_game_simulation_params, delete_negotiation_chats
 from modules.database_handler import get_instructor_api_key, upsert_instructor_api_key
-from modules.negotiations import create_chats, create_all_error_chats
+from modules.negotiations import create_chats, create_all_error_chats, extract_summary_from_transcript
+from modules.negotiation_display import render_chat_summary
 from modules.metrics_handler import record_page_entry, record_page_exit
 from modules.student_utils import process_student_csv
 
@@ -469,7 +470,6 @@ def render_control_center():
                                     st.error("Failed to save API key. Check API_KEY_ENCRYPTION_KEY.")
 
                             status_placeholder = st.empty()
-                            status_placeholder.info("Simulation started. This can take a few minutes...")
                             delete_from_round(game_id)
                             delete_negotiation_chats(game_id)
 
@@ -493,12 +493,31 @@ def render_control_center():
                                 st.error("Failed to retrieve group values from database.")
                                 st.stop()
 
+                            progress_header = st.empty()
                             progress_placeholder = st.empty()
+                            progress_bar = st.empty()
+                            progress_caption = st.empty()
+                            matches_per_round = (len(teams) + 1) // 2
+                            total_matches = rounds_to_run * matches_per_round * 2
+                            completed_matches = 0
+
+                            progress_header.markdown("### Simulation Progress")
+                            progress_bar = st.progress(0)
+                            progress_caption.caption(
+                                f"Planned chats: {total_matches} | Rounds: {rounds_to_run} | Teams: {len(teams)}"
+                            )
 
                             def update_progress(round_num, team1, team2, initiator_role_name, responder_role_name):
+                                nonlocal completed_matches
+                                completed_matches += 1
+                                if total_matches:
+                                    progress_bar.progress(min(completed_matches / total_matches, 1.0))
                                 progress_placeholder.info(
                                     f"Round {round_num}: {team1['Name']} ({initiator_role_name}) "
                                     f"vs {team2['Name']} ({responder_role_name})"
+                                )
+                                progress_caption.caption(
+                                    f"Completed {completed_matches} of {total_matches} chats"
                                 )
 
                             with st.spinner("Running negotiations..."):
@@ -518,6 +537,10 @@ def render_control_center():
                                     progress_callback=update_progress,
                                 )
                             progress_placeholder.empty()
+                            progress_bar.empty()
+                            progress_caption.empty()
+                            progress_header.empty()
+                            status_placeholder.empty()
                             status_placeholder.empty()
                             if isinstance(outcome_simulation, dict) and outcome_simulation.get("status") == "success":
                                 completed = outcome_simulation.get("completed_matches", 0)
@@ -645,31 +668,83 @@ def render_control_center():
 
             if round_data:
                 matchups = [
-                    (round_, class_1, team_1, class_2, team_2)
-                    for round_, class_1, team_1, class_2, team_2, _, _, _, _ in round_data
+                    (round_, class_1, team_1, class_2, team_2, score_team1_role1, score_team2_role2, score_team1_role2, score_team2_role1)
+                    for round_, class_1, team_1, class_2, team_2, score_team1_role1, score_team2_role2, score_team1_role2, score_team2_role1 in round_data
                 ]
 
-                def render_matchups(matchups_to_show):
+                def render_matchups(matchups_to_show, selected_class, selected_group_id, summary_termination_message):
                     if not matchups_to_show:
                         st.write('No chats found.')
                         return
-                    for round_, class_1, team_1, class_2, team_2 in matchups_to_show:
-                        chat_buyer = get_negotiation_chat(game_id, round_, class_1, team_1, class_2, team_2)
-                        chat_seller = get_negotiation_chat(game_id, round_, class_2, team_2, class_1, team_1)
+                    for round_, class_1, team_1, class_2, team_2, score_team1_role1, score_team2_role2, score_team1_role2, score_team2_role1 in matchups_to_show:
+                        if selected_class == class_2 and selected_group_id == team_2:
+                            buyer_role1 = (class_2, team_2)
+                            seller_role2 = (class_1, team_1)
+                        else:
+                            buyer_role1 = (class_1, team_1)
+                            seller_role2 = (class_2, team_2)
+
+                        buyer_details = get_negotiation_chat_details(
+                            game_id, round_, buyer_role1[0], buyer_role1[1], seller_role2[0], seller_role2[1]
+                        )
+                        seller_details = get_negotiation_chat_details(
+                            game_id, round_, seller_role2[0], seller_role2[1], buyer_role1[0], buyer_role1[1]
+                        )
+                        chat_buyer = buyer_details.get("transcript") if buyer_details else None
+                        chat_seller = seller_details.get("transcript") if seller_details else None
+
+                        def role_scores(role1_class, role1_team, role2_class, role2_team):
+                            if role1_class == class_1 and role1_team == team_1:
+                                return score_team1_role1, score_team2_role2
+                            return score_team2_role1, score_team1_role2
 
                         header = f"Round {round_}: Class {class_1} - Group {team_1} vs Class {class_2} - Group {team_2}"
                         st.markdown(f"#### {header}")
                         with st.expander(f"**{name_roles_1} chat**"):
-                            if chat_buyer:
-                                st.write(chat_buyer.replace('$', '\\$'))
-                            else:
-                                st.write('Chat not found.')
+                            summary_text = buyer_details.get("summary") if buyer_details else ""
+                            deal_value = buyer_details.get("deal_value") if buyer_details else None
+                            if not summary_text and chat_buyer:
+                                summary_text, deal_value = extract_summary_from_transcript(
+                                    chat_buyer, summary_termination_message
+                                )
+                            buyer_score, seller_score = role_scores(
+                                buyer_role1[0], buyer_role1[1], seller_role2[0], seller_role2[1]
+                            )
+                            render_chat_summary(
+                                summary_text,
+                                deal_value,
+                                buyer_score,
+                                seller_score,
+                                name_roles_1,
+                                name_roles_2,
+                                chat_buyer,
+                                transcript_label="View full transcript",
+                                transcript_expanded=False,
+                                show_heading=False,
+                            )
 
                         with st.expander(f"**{name_roles_2} chat**"):
-                            if chat_seller:
-                                st.write(chat_seller.replace('$', '\\$'))
-                            else:
-                                st.write('Chat not found.')
+                            summary_text = seller_details.get("summary") if seller_details else ""
+                            deal_value = seller_details.get("deal_value") if seller_details else None
+                            if not summary_text and chat_seller:
+                                summary_text, deal_value = extract_summary_from_transcript(
+                                    chat_seller, summary_termination_message
+                                )
+                            buyer_score, seller_score = role_scores(
+                                seller_role2[0], seller_role2[1], buyer_role1[0], buyer_role1[1]
+                            )
+                            render_chat_summary(
+                                summary_text,
+                                deal_value,
+                                buyer_score,
+                                seller_score,
+                                name_roles_1,
+                                name_roles_2,
+                                chat_seller,
+                                transcript_label="View full transcript",
+                                transcript_expanded=False,
+                                show_heading=False,
+                            )
 
                 st.markdown("### Leaderboard")
                 leaderboard = fetch_and_compute_scores_for_year_game(game_id)
@@ -741,7 +816,13 @@ def render_control_center():
                         m for m in matchups
                         if (m[1] == class_ and m[2] == group_id) or (m[3] == class_ and m[4] == group_id)
                     ]
-                    render_matchups(group_matchups)
+                    simulation_params = get_game_simulation_params(game_id)
+                    summary_termination_message = (
+                        simulation_params.get("summary_termination_message")
+                        if simulation_params
+                        else "The value agreed was"
+                    )
+                    render_matchups(group_matchups, class_, group_id, summary_termination_message)
                 else:
                     st.write("No leaderboard available.")
             else:

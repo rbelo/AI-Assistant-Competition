@@ -86,6 +86,21 @@ def evaluate_deal_summary(chat_history, summary_prompt, summary_termination_mess
     return summary_text, parse_deal_value(summary_text, summary_termination_message)
 
 
+def extract_summary_from_transcript(transcript, summary_termination_message):
+    if not transcript:
+        return "", -1
+
+    parts = [part.strip() for part in transcript.split("\n\n\n") if part.strip()]
+    if not parts:
+        return "", -1
+
+    summary_text = parts[-1]
+    if summary_termination_message and summary_termination_message not in summary_text:
+        return "", -1
+
+    return summary_text, parse_deal_value(summary_text, summary_termination_message)
+
+
 def build_summary_agents(config_list, summary_termination_message, negotiation_termination_message,
                          include_summary=False):
     user = autogen.UserProxyAgent(
@@ -233,7 +248,9 @@ def create_chat(game_id, minimizer_team, maximizer_team, initiator_role_index, s
                     group1_id=group1,
                     group2_class=class2,
                     group2_id=group2,
-                    transcript=negotiation
+                    transcript=negotiation,
+                    summary=summary_text,
+                    deal_value=deal_value,
                 )
             except Exception as e:
                 print(f"Warning: Failed to store negotiation chat: {e}")
@@ -534,7 +551,7 @@ def create_chats(game_id, config_list, name_roles, conversation_order, teams, va
         config_list,
         summary_termination_message,
         negotiation_termination_message,
-        include_summary=False,
+        include_summary=True,
     )
 
     max_retries = 10
@@ -715,7 +732,7 @@ def create_all_error_chats(game_id, config_list, name_roles, conversation_order,
         config_list,
         summary_termination_message,
         negotiation_termination_message,
-        include_summary=False,
+        include_summary=True,
     )
 
     max_retries = 10
