@@ -4,7 +4,9 @@
 # This project uses 'uv' for fast dependency management.
 # All commands work without manually activating the virtual environment.
 
-.PHONY: help install install-dev test test-unit test-e2e test-integration test-cov lint lint-fix format check run run-dev clean venv
+.PHONY: help install install-dev test test-unit test-e2e test-integration test-cov lint lint-fix format check run run-dev stop db-up db-down db-psql reset-local-db reset-remote-db clean venv
+
+BREW_PSQL ?= $(shell brew --prefix postgresql@15 2>/dev/null)/bin/psql
 
 # Default target
 help:
@@ -31,6 +33,14 @@ help:
 	@echo "Application:"
 	@echo "  make run           Start the Streamlit application"
 	@echo "  make run-dev       Start app with auto-login (no authentication)"
+	@echo "  make stop          Stop the Streamlit app started by make run/run-dev"
+	@echo ""
+	@echo "Database:"
+	@echo "  make db-up         Start local Postgres via Homebrew (postgresql@15)"
+	@echo "  make db-down       Stop local Postgres"
+	@echo "  make db-psql       Open psql shell for the local database"
+	@echo "  make reset-local-db  Reset schema and seed data in local Postgres"
+	@echo "  make reset-remote-db Reset schema and seed data in remote Postgres (requires REMOTE_DATABASE_URL)"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  make clean         Remove cache and build artifacts"
@@ -94,7 +104,37 @@ run:
 
 # Development mode with auto-login (no authentication required)
 run-dev:
-	cd streamlit && DEV_AUTO_LOGIN=1 DEV_IS_INSTRUCTOR=true uv run streamlit run 0_Home.py
+	cd streamlit && DEV_AUTO_LOGIN=1 DEV_IS_INSTRUCTOR=true DEV_USER_ID=admin DEV_EMAIL=admin@rodrigobelo.com DATABASE_URL=postgresql:///ai_assistant_competition uv run streamlit run 0_Home.py
+
+# Stop Streamlit app launched via make run/run-dev
+stop:
+	@pkill -f "uv run streamlit run 0_Home.py" 2>/dev/null || true
+	@pkill -f "streamlit run 0_Home.py" 2>/dev/null || true
+	@echo "Stopped Streamlit app (if running)."
+
+# Local database (Homebrew)
+db-up:
+	@brew services start postgresql@15
+	@echo "Postgres is starting on localhost:5432"
+
+db-down:
+	@brew services stop postgresql@15
+
+db-psql:
+	@$(BREW_PSQL) -d ai_assistant_competition
+
+reset-local-db:
+	@psql "postgresql:///ai_assistant_competition" -v ON_ERROR_STOP=1 -c "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO CURRENT_USER; GRANT ALL ON SCHEMA public TO public;"
+	@psql "postgresql:///ai_assistant_competition" -v ON_ERROR_STOP=1 -f database/Tables_AI_Negotiator.sql
+	@psql "postgresql:///ai_assistant_competition" -v ON_ERROR_STOP=1 -f database/Populate_Tables_AI_Negotiator.sql
+	@echo "Database reset complete."
+
+reset-remote-db:
+	@test -n "$(REMOTE_DATABASE_URL)" || (echo "REMOTE_DATABASE_URL is required" && exit 1)
+	@psql "$(REMOTE_DATABASE_URL)" -v ON_ERROR_STOP=1 -c "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO CURRENT_USER; GRANT ALL ON SCHEMA public TO public;"
+	@psql "$(REMOTE_DATABASE_URL)" -v ON_ERROR_STOP=1 -f database/Tables_AI_Negotiator.sql
+	@psql "$(REMOTE_DATABASE_URL)" -v ON_ERROR_STOP=1 -f database/Populate_Tables_AI_Negotiator.sql
+	@echo "Database reset complete."
 
 # Maintenance
 clean:

@@ -10,6 +10,9 @@ app.secret_key = 'key'
 
 # Helper to get the database connection string at runtime
 def get_db_connection_string():
+    env_url = os.getenv("DATABASE_URL")
+    if env_url:
+        return env_url
     try:
         return st.secrets["database"]["url"]
     except (KeyError, AttributeError) as e:
