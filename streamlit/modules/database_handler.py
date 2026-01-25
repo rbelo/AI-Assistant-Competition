@@ -966,7 +966,7 @@ def delete_negotiation_chats(game_id):
 
 
 def insert_playground_result(user_id, class_, group_id, role1_name, role2_name, transcript,
-                             summary=None, deal_value=None, score_role1=None, score_role2=None):
+                             summary=None, deal_value=None, score_role1=None, score_role2=None, model=None):
     """Store a playground negotiation transcript."""
     conn = get_connection()
     if not conn:
@@ -983,6 +983,7 @@ def insert_playground_result(user_id, class_, group_id, role1_name, role2_name, 
                     role1_name TEXT,
                     role2_name TEXT,
                     transcript TEXT NOT NULL,
+                    model TEXT,
                     summary TEXT,
                     deal_value FLOAT,
                     score_role1 FLOAT,
@@ -999,6 +1000,14 @@ def insert_playground_result(user_id, class_, group_id, role1_name, role2_name, 
                 """
             )
             columns = {row[0] for row in cur.fetchall()}
+            if "model" not in columns:
+                cur.execute(
+                    """
+                    ALTER TABLE playground_result
+                    ADD COLUMN model TEXT;
+                    """
+                )
+                columns.add("model")
 
             insert_cols = ["user_id", "class", "group_id", "role1_name", "role2_name", "transcript"]
             values = {
@@ -1022,6 +1031,9 @@ def insert_playground_result(user_id, class_, group_id, role1_name, role2_name, 
             if "score_role2" in columns:
                 insert_cols.append("score_role2")
                 values["score_role2"] = score_role2
+            if "model" in columns:
+                insert_cols.append("model")
+                values["model"] = model
 
             cols_sql = ", ".join(insert_cols)
             params_sql = ", ".join(f"%({col})s" for col in insert_cols)
@@ -1105,6 +1117,8 @@ def get_playground_results(user_id, class_, group_id, limit=20):
                 select_cols.append("score_role1")
             if "score_role2" in columns:
                 select_cols.append("score_role2")
+            if "model" in columns:
+                select_cols.append("model")
             select_cols.append("created_at")
             cols_sql = ", ".join(select_cols)
             query = f"""
@@ -1135,6 +1149,7 @@ def get_playground_results(user_id, class_, group_id, limit=20):
                     "deal_value": row_data.get("deal_value"),
                     "score_role1": row_data.get("score_role1"),
                     "score_role2": row_data.get("score_role2"),
+                    "model": row_data.get("model"),
                     "created_at": row_data.get("created_at"),
                 })
             return results

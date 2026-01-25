@@ -13,6 +13,7 @@ def render_chat_summary(
     transcript_label="View full transcript",
     transcript_expanded=False,
     show_heading=True,
+    transcript_key=None,
 ):
     if show_heading:
         st.subheader(summary_label)
@@ -42,6 +43,7 @@ def render_chat_summary(
                 "Negotiation Transcript",
                 transcript,
                 height=400,
+                key=transcript_key,
             )
         else:
             st.write("Chat not found.")

@@ -10,7 +10,7 @@ from modules.database_handler import populate_plays_table, insert_student_data, 
 from modules.database_handler import get_academic_year_class_combinations, get_game_by_id, fetch_games_data, get_next_game_id, get_students_from_db, get_group_ids_from_game_id, get_round_data, get_error_matchups, fetch_and_compute_scores_for_year_game, get_negotiation_chat_details
 from modules.database_handler import get_all_group_values, get_student_prompt, get_student_prompt_with_timestamp, upsert_game_simulation_params, get_game_simulation_params, delete_negotiation_chats
 from modules.database_handler import list_user_api_keys, get_user_api_key
-from modules.negotiations import create_chats, create_all_error_chats, extract_summary_from_transcript
+from modules.negotiations import create_chats, create_all_error_chats, extract_summary_from_transcript, build_llm_config
 from modules.negotiation_display import render_chat_summary
 from modules.metrics_handler import record_page_entry, record_page_exit
 from modules.student_utils import process_student_csv
@@ -393,6 +393,13 @@ def render_control_center():
                     teams.remove(i)
 
                 simulation_params = get_game_simulation_params(game_id)
+                model_options = ["gpt-4o-mini", "gpt-4.1-mini", "gpt-5-mini", "gpt-5-nano"]
+                model_explanations = {
+                    "gpt-4o-mini": "Best value for negotiation: fast, low cost, strong dialog quality.",
+                    "gpt-4.1-mini": "More consistent reasoning while staying inexpensive.",
+                    "gpt-5-mini": "Higher quality reasoning at a moderate cost.",
+                    "gpt-5-nano": "Ultra-cheap for large batches; weakest negotiation quality.",
+                }
                 default_model = simulation_params["model"] if simulation_params else "gpt-4o-mini"
                 default_starting_message = simulation_params["starting_message"] if simulation_params else "Hello, shall we start the negotiation?"
                 default_num_turns = simulation_params["num_turns"] if simulation_params else 15
@@ -423,7 +430,14 @@ def render_control_center():
                                 key="cc_api_key_select_sim",
                             )
                             selected_key_id = key_options[selected_label]
-                        model = st.selectbox('OpenAI Model', ['gpt-4o-mini', 'gpt-4o'], index=0 if default_model == 'gpt-4o-mini' else 1, key="cc_model")
+                        model = st.selectbox(
+                            "OpenAI Model",
+                            model_options,
+                            index=model_options.index(default_model) if default_model in model_options else 0,
+                            format_func=lambda name: f"{name} — {model_explanations.get(name, '')}",
+                            help="Model descriptions are shown in the dropdown. Pick the best balance of cost and quality.",
+                            key="cc_model",
+                        )
                         max_opponents = max(len(teams) - 1, 1)
                         opponents_per_team = st.number_input(
                             'Opponents per Team',
@@ -487,7 +501,7 @@ def render_control_center():
 
                             update_num_rounds_game(rounds_to_run, game_id)
 
-                            config_list = {"config_list": [{"model": model, "api_key": resolved_api_key}], "temperature": 0.3, "top_p": 0.5}
+                            config_list = build_llm_config(model, resolved_api_key)
                             values = get_all_group_values(game_id)
                             if not values:
                                 st.error("Failed to retrieve group values from database.")
@@ -586,7 +600,14 @@ def render_control_center():
                                 key="cc_api_key_select_error",
                             )
                             selected_key_id = key_options[selected_label]
-                        model = st.selectbox('OpenAI Model', ['gpt-4o-mini', 'gpt-4o'], key="cc_error_model")
+                        model = st.selectbox(
+                            "OpenAI Model",
+                            model_options,
+                            index=model_options.index(default_model) if default_model in model_options else 0,
+                            format_func=lambda name: f"{name} — {model_explanations.get(name, '')}",
+                            help="Model descriptions are shown in the dropdown. Pick the best balance of cost and quality.",
+                            key="cc_error_model",
+                        )
                         submit_button = st.form_submit_button(label='Run')
 
                     if submit_button:
@@ -601,7 +622,7 @@ def render_control_center():
                                 st.error("No simulation parameters found for this game.")
                                 st.stop()
 
-                            config_list = {"config_list": [{"model": model, "api_key": resolved_api_key}], "temperature": 0.3, "top_p": 0.5}
+                            config_list = build_llm_config(model, resolved_api_key)
                             values = get_all_group_values(game_id)
                             if not values:
                                 st.error("Failed to retrieve group values from database.")
@@ -722,6 +743,11 @@ def render_control_center():
                                 transcript_label="View full transcript",
                                 transcript_expanded=False,
                                 show_heading=False,
+                                transcript_key=(
+                                    f"chat_transcript_{game_id}_{round_}_"
+                                    f"{buyer_role1[0]}_{buyer_role1[1]}_"
+                                    f"{seller_role2[0]}_{seller_role2[1]}_role1"
+                                ),
                             )
 
                         with st.expander(f"**{name_roles_2} chat**"):
@@ -745,6 +771,11 @@ def render_control_center():
                                 transcript_label="View full transcript",
                                 transcript_expanded=False,
                                 show_heading=False,
+                                transcript_key=(
+                                    f"chat_transcript_{game_id}_{round_}_"
+                                    f"{seller_role2[0]}_{seller_role2[1]}_"
+                                    f"{buyer_role1[0]}_{buyer_role1[1]}_role2"
+                                ),
                             )
 
                 st.markdown("### Leaderboard")

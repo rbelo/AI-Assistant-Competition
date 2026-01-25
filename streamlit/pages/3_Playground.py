@@ -9,6 +9,7 @@ from modules.negotiations import (
     compute_deal_scores,
     build_summary_agents,
     evaluate_deal_summary,
+    build_llm_config,
 )
 from modules.negotiation_display import render_chat_summary
 from modules.sidebar import render_sidebar
@@ -40,10 +41,10 @@ def clean_agent_message(agent_name_1, agent_name_2, message):
 # Function to create and run test negotiations
 def run_playground_negotiation(role1_prompt, role2_prompt, role1_name, role2_name,
                                starting_message, num_turns, api_key, model="gpt-4o-mini",
+                               conversation_starter=None,
                                negotiation_termination_message=NEGOTIATION_TERMINATION_MESSAGE):
     # Configure agents
-    config_list = {"config_list": [{"model": model, "api_key": api_key}],
-                   "temperature": 0.3, "top_p": 0.5}
+    config_list = build_llm_config(model, api_key)
 
     # Create a closure to capture chat history
     def create_termination_check(history):
@@ -68,11 +69,13 @@ def run_playground_negotiation(role1_prompt, role2_prompt, role1_name, role2_nam
     )
 
     # Initialize chat
-    chat = role1_agent.initiate_chat(
-        role2_agent,
+    initiator = role2_agent if conversation_starter == role2_name else role1_agent
+    responder = role1_agent if initiator is role2_agent else role2_agent
+    chat = initiator.initiate_chat(
+        responder,
         clear_history=True,
         max_turns=num_turns,
-        message=starting_message
+        message=starting_message,
     )
 
     # Update termination checks with actual chat history
@@ -93,7 +96,7 @@ def run_playground_negotiation(role1_prompt, role2_prompt, role1_name, role2_nam
 # Save playground negotiation results for future reference
 def save_playground_results(user_id, class_, group_id, role1_name, role2_name,
                             negotiation_text, summary=None, deal_value=None,
-                            score_role1=None, score_role2=None):
+                            score_role1=None, score_role2=None, model=None):
     return insert_playground_result(
         user_id=user_id,
         class_=class_,
@@ -105,6 +108,7 @@ def save_playground_results(user_id, class_, group_id, role1_name, role2_name,
         deal_value=deal_value,
         score_role1=score_role1,
         score_role2=score_role2,
+        model=model,
     )
 
 
@@ -133,7 +137,13 @@ else:
 
     with tab1:
         st.header("Create New Test Negotiation")
-
+        model_options = ["gpt-4o-mini", "gpt-4.1-mini", "gpt-5-mini", "gpt-5-nano"]
+        model_explanations = {
+            "gpt-4o-mini": "Best value for negotiation: fast, low cost, strong dialog quality.",
+            "gpt-4.1-mini": "More consistent reasoning while staying inexpensive.",
+            "gpt-5-mini": "Higher quality reasoning at a moderate cost.",
+            "gpt-5-nano": "Ultra-cheap for large batches; weakest negotiation quality.",
+        }
         with st.form(key="playground_form"):
             col1, col2 = st.columns(2)
 
@@ -150,9 +160,25 @@ else:
                                             value=f"You are a seller negotiating to sell an item. Your reservation value is {role2_value}, which means you won't accept less than this amount. Try to negotiate the highest price possible.")
 
             st.subheader("Negotiation Settings")
+            conversation_options = [f"{role1_name} ➡ {role2_name}", f"{role2_name} ➡ {role1_name}"]
+            conversation_starter = st.radio(
+                "Conversation Starter",
+                conversation_options,
+                horizontal=True,
+                index=0,
+                key="playground_conversation_starter",
+            )
             starting_message = st.text_input("Starting Message", value="Hello, I'm interested in negotiating with you.")
             num_turns = st.slider("Maximum Turns", min_value=5, max_value=30, value=15)
-            model = st.selectbox("Model", options=["gpt-4o-mini", "gpt-4o"], index=0)
+            st.subheader("Run Configuration")
+            model = st.selectbox(
+                "Model",
+                options=model_options,
+                index=0,
+                format_func=lambda name: f"{name} — {model_explanations.get(name, '')}",
+                help="Model descriptions are shown in the dropdown. Pick the best balance of cost and quality.",
+                key="playground_model",
+            )
             saved_keys = list_user_api_keys(user_id)
             key_options = {
                 key["key_name"]: key["key_id"] for key in saved_keys
@@ -178,75 +204,75 @@ else:
             if not resolved_api_key:
                 st.error("Please select an API key in Profile before running the negotiation.")
                 st.stop()
-                with st.spinner("Running negotiation test..."):
+            with st.spinner("Running negotiation test..."):
+                try:
+                    negotiation_text, chat_history = run_playground_negotiation(
+                        role1_prompt, role2_prompt, role1_name, role2_name,
+                        starting_message, num_turns, resolved_api_key, model,
+                        conversation_starter.split(" ➡ ")[0].strip(),
+                        NEGOTIATION_TERMINATION_MESSAGE
+                    )
+                    summary_text = ""
+                    deal_value = None
                     try:
-                        negotiation_text, chat_history = run_playground_negotiation(
-                            role1_prompt, role2_prompt, role1_name, role2_name,
-                            starting_message, num_turns, resolved_api_key, model,
-                            NEGOTIATION_TERMINATION_MESSAGE
+                        summary_config = build_llm_config(model, resolved_api_key)
+                        user, summary_agent = build_summary_agents(
+                            summary_config,
+                            SUMMARY_TERMINATION_MESSAGE,
+                            NEGOTIATION_TERMINATION_MESSAGE,
+                            include_summary=True,
                         )
-                        summary_text = ""
-                        deal_value = None
-                        try:
-                            summary_config = {"config_list": [{"model": model, "api_key": resolved_api_key}],
-                                              "temperature": 0.3, "top_p": 0.5}
-                            user, summary_agent = build_summary_agents(
-                                summary_config,
-                                SUMMARY_TERMINATION_MESSAGE,
-                                NEGOTIATION_TERMINATION_MESSAGE,
-                                include_summary=True,
-                            )
-                            summary_text, deal_value = evaluate_deal_summary(
-                                chat_history,
-                                SUMMARY_PROMPT,
-                                SUMMARY_TERMINATION_MESSAGE,
-                                user,
-                                summary_agent,
-                                role1_name=role1_name,
-                                role2_name=role2_name,
-                                history_size=None,
-                            )
-                        except Exception:
-                            st.warning("Summary generation failed for this run.")
+                        summary_text, deal_value = evaluate_deal_summary(
+                            chat_history,
+                            SUMMARY_PROMPT,
+                            SUMMARY_TERMINATION_MESSAGE,
+                            user,
+                            summary_agent,
+                            role1_name=role1_name,
+                            role2_name=role2_name,
+                            history_size=None,
+                        )
+                    except Exception:
+                        st.warning("Summary generation failed for this run.")
 
-                        score_role1 = None
-                        score_role2 = None
-                        if deal_value is not None:
-                            score_role2, score_role1 = compute_deal_scores(
-                                deal_value,
-                                role2_value,
-                                role1_value,
-                            )
-
-                        # Display results
-                        st.success("Test negotiation completed!")
-                        st.subheader("Negotiation Results")
-                        render_chat_summary(
-                            summary_text,
+                    score_role1 = None
+                    score_role2 = None
+                    if deal_value is not None:
+                        score_role2, score_role1 = compute_deal_scores(
                             deal_value,
-                            score_role1,
-                            score_role2,
-                            role1_name,
-                            role2_name,
-                            negotiation_text,
-                            transcript_label="View full transcript",
-                            transcript_expanded=True,
+                            role2_value,
+                            role1_value,
                         )
 
-                        # Save results if requested
-                        if save_results:
-                            result_id = save_playground_results(
-                                user_id, class_, group_id, role1_name, role2_name,
-                                negotiation_text, summary_text, deal_value,
-                                score_role1, score_role2
-                            )
-                            if result_id:
-                                st.success(f"Results saved successfully! Reference ID: {result_id}")
-                            else:
-                                st.error("Failed to save results.")
+                    # Display results
+                    st.success("Test negotiation completed!")
+                    st.subheader("Negotiation Results")
+                    render_chat_summary(
+                        summary_text,
+                        deal_value,
+                        score_role1,
+                        score_role2,
+                        role1_name,
+                        role2_name,
+                        negotiation_text,
+                        transcript_label="View full transcript",
+                        transcript_expanded=True,
+                        transcript_key="playground_latest_transcript",
+                    )
 
-                    except Exception as e:
-                        st.error(f"An error occurred during the negotiation: {str(e)}")
+                    # Save results if requested
+                    if save_results:
+                        result_id = save_playground_results(
+                            user_id, class_, group_id, role1_name, role2_name,
+                            negotiation_text, summary_text, deal_value,
+                            score_role1, score_role2, model=model
+                        )
+                        if result_id:
+                            st.success(f"Results saved successfully! Reference ID: {result_id}")
+                        else:
+                            st.error("Failed to save results.")
+                except Exception as e:
+                    st.error(f"An error occurred during the negotiation: {str(e)}")
 
     with tab2:
         st.header("My Previous Tests")
@@ -273,15 +299,19 @@ else:
 
             if st.button("Clear All", key="playground_clear_all"):
                 confirm_clear_all()
+            total_tests = len(previous_tests)
             for i, test_result in enumerate(previous_tests, 1):
+                run_number = total_tests - i + 1
                 role_label = ""
                 if test_result["role1_name"] and test_result["role2_name"]:
                     role_label = f"{test_result['role1_name']} vs {test_result['role2_name']} - "
+                model_label = test_result.get("model") or "Unknown model"
                 created_at = test_result["created_at"]
                 if hasattr(created_at, "replace"):
                     created_at = created_at.replace(microsecond=0)
-                title = f"{role_label}Test Run {i} ({created_at})"
+                title = f"{role_label}Test Run {run_number} ({created_at}) • {model_label}"
                 with st.expander(title, expanded=i == 1):
+                    st.caption(f"Model: {model_label}")
                     if st.button("Delete Test", key=f"delete_test_{test_result['id']}"):
                         if delete_playground_result(test_result["id"], user_id, class_, group_id):
                             st.success("Test deleted.")
@@ -299,6 +329,7 @@ else:
                         transcript_label="View full transcript",
                         transcript_expanded=False,
                         show_heading=False,
+                        transcript_key=f"playground_test_transcript_{test_result['id']}",
                     )
         else:
             st.info("You don't have any previous playground tests. Create a new test to see results here.")

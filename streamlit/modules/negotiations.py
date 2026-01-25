@@ -477,6 +477,14 @@ def is_valid_termination(msg, history, negotiation_termination_message):
     
     return True
 
+
+def build_llm_config(model, api_key, temperature=0.3, top_p=0.5):
+    config_list = {"config_list": [{"model": model, "api_key": api_key}]}
+    if not model.startswith("gpt-5"):
+        config_list["temperature"] = temperature
+        config_list["top_p"] = top_p
+    return config_list
+
 def create_agents(game_id, teams, values, name_roles, config_list, negotiation_termination_message):
     team_info = []
 
