@@ -1360,14 +1360,25 @@ def get_error_matchups(game_id):
         return False
     
 # Function to update the scores of a specific row in the 'round' table
-def update_round_data(game_id, round_number, group1_class, group1_id, group2_class, group2_id, score_team1, score_team2, order):
+def update_round_data(
+    game_id,
+    round_number,
+    group1_class,
+    group1_id,
+    group2_class,
+    group2_id,
+    score_team1,
+    score_team2,
+    team1_role_index,
+    team2_role_index,
+):
     conn = get_connection()
     if not conn:
         return False
     try:
         with conn.cursor() as cur:
 
-            if order == 'same':
+            if (team1_role_index, team2_role_index) == (1, 2):
 
                 query1 = """
                     UPDATE round
@@ -1389,7 +1400,7 @@ def update_round_data(game_id, round_number, group1_class, group1_id, group2_cla
                 conn.commit()
                 return True
 
-            if order == 'opposite':
+            if (team1_role_index, team2_role_index) == (2, 1):
 
                 query1 = """
                     UPDATE round
@@ -1410,6 +1421,8 @@ def update_round_data(game_id, round_number, group1_class, group1_id, group2_cla
 
                 conn.commit()
                 return True
+
+            return False
 
     except Exception:
         conn.rollback()

@@ -404,9 +404,15 @@ def render_control_center():
                 default_negotiation_termination = simulation_params["negotiation_termination_message"] if simulation_params else "Pleasure doing business with you"
                 default_summary_prompt = simulation_params["summary_prompt"] if simulation_params else "What was the value agreed?"
                 default_summary_termination = simulation_params["summary_termination_message"] if simulation_params else "The value agreed was"
-                default_order = simulation_params["conversation_order"] if simulation_params else "same"
+                default_conversation_starter = simulation_params["conversation_order"] if simulation_params else name_roles_1
                 conversation_options = [f'{name_roles_1} ➡ {name_roles_2}', f'{name_roles_2} ➡ {name_roles_1}']
-                default_order_index = 0 if default_order == "same" else 1
+                if default_conversation_starter == "same":
+                    default_conversation_starter = name_roles_1
+                elif default_conversation_starter == "opposite":
+                    default_conversation_starter = name_roles_2
+                elif default_conversation_starter not in (name_roles_1, name_roles_2):
+                    default_conversation_starter = name_roles_1
+                default_order_index = 0 if default_conversation_starter == name_roles_1 else 1
 
                 if len(teams) >= 2:
                     st.warning(
@@ -467,11 +473,11 @@ def render_control_center():
                             delete_from_round(game_id)
                             delete_negotiation_chats(game_id)
 
-                            order = 'same' if conversation_starter.split(' ➡ ') == name_roles else 'opposite'
+                            initiator_role = conversation_starter.split(' ➡ ')[0].strip()
                             upsert_game_simulation_params(
                                 game_id=game_id,
                                 model=model,
-                                conversation_order=order,
+                                conversation_order=initiator_role,
                                 starting_message=starting_message,
                                 num_turns=num_turns,
                                 negotiation_termination_message=negotiation_termination_message,
@@ -489,10 +495,10 @@ def render_control_center():
 
                             progress_placeholder = st.empty()
 
-                            def update_progress(round_num, team1, team2, chat_order):
-                                role_1, role_2 = name_roles if chat_order == "same" else name_roles[::-1]
+                            def update_progress(round_num, team1, team2, initiator_role_name, responder_role_name):
                                 progress_placeholder.info(
-                                    f"Round {round_num}: {team1['Name']} ({role_1}) vs {team2['Name']} ({role_2})"
+                                    f"Round {round_num}: {team1['Name']} ({initiator_role_name}) "
+                                    f"vs {team2['Name']} ({responder_role_name})"
                                 )
 
                             with st.spinner("Running negotiations..."):
@@ -500,7 +506,7 @@ def render_control_center():
                                     game_id,
                                     config_list,
                                     name_roles,
-                                    order,
+                                    initiator_role,
                                     teams,
                                     values,
                                     rounds_to_run,

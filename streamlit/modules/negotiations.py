@@ -35,17 +35,17 @@ def parse_team_name(team_name):
     return class_part, group_part
 
 
-def create_chat(game_id, order, team1, team2, starting_message, num_turns, summary_prompt,
-                round_num, user, summary_agent, summary_termination_message,
-                store_in_db=True, game_type="zero-sum"):
+def create_chat(game_id, minimizer_team, maximizer_team, initiator_role_index, starting_message, num_turns,
+                summary_prompt, round_num, user, summary_agent, summary_termination_message, store_in_db=True,
+                game_type="zero-sum"):
     """
     Create a negotiation chat between two teams.
 
     Args:
         game_id: The game ID
-        order: 'same' or 'opposite' for role ordering
-        team1: First team dict with 'Agent 1', 'Agent 2', 'Name', 'Value 1', 'Value 2'
-        team2: Second team dict
+        minimizer_team: Team playing the minimizer role
+        maximizer_team: Team playing the maximizer role
+        initiator_role_index: Role index (1 or 2) for the initiator team
         starting_message: Initial message to start negotiation
         num_turns: Maximum number of turns
         summary_prompt: Prompt for the summary agent
@@ -63,9 +63,14 @@ def create_chat(game_id, order, team1, team2, starting_message, num_turns, summa
     # Add game type and explanation to the context
     game_context = f"Game Type: {game_type}\nGame Explanation: {game_explanation}\n\n"
 
+    responder_role_index = 2 if initiator_role_index == 1 else 1
+    initiator_team, responder_team = (
+        (minimizer_team, maximizer_team) if initiator_role_index == 1 else (maximizer_team, minimizer_team)
+    )
+
     # Use agents from team dicts
-    agent1 = team1["Agent 1"]
-    agent2 = team2["Agent 2"]
+    agent1 = get_role_agent(initiator_team, initiator_role_index)
+    agent2 = get_role_agent(responder_team, responder_role_index)
     name1 = agent1.name
     name2 = agent2.name
 
@@ -103,14 +108,9 @@ def create_chat(game_id, order, team1, team2, starting_message, num_turns, summa
         deal_str = summary_eval.chat_history[1]['content']
         negotiation += "\n" + deal_str
 
-    if store_in_db and team1 and team2 and game_id and round_num is not None:
-        storage_team1 = team1
-        storage_team2 = team2
-        if order == "opposite":
-            storage_team1 = team2
-            storage_team2 = team1
-        class1, group1 = parse_team_name(storage_team1["Name"])
-        class2, group2 = parse_team_name(storage_team2["Name"])
+    if store_in_db and minimizer_team and maximizer_team and game_id and round_num is not None:
+        class1, group1 = parse_team_name(minimizer_team["Name"])
+        class2, group2 = parse_team_name(maximizer_team["Name"])
         if class1 and group1 is not None and class2 and group2 is not None:
             try:
                 insert_negotiation_chat(
@@ -236,6 +236,78 @@ def calculate_score(agent_1_msg, agent_2_msg, agent_1_value, agent_2_value, game
             return {"player1_score": 5, "player2_score": 0}
 
 
+def compute_deal_scores(deal, maximizer_value, minimizer_value, precision=4):
+    """Compute normalized scores using (deal, maximizer_reservation, minimizer_reservation).
+
+    When a deal is feasible for both sides, maximizer_value < minimizer_value.
+    In that case, deals within the overlap use a ratio (maximizer share), while
+    deals outside the overlap give a full score to the side whose reservation is met.
+    If maximizer_value >= minimizer_value, there is no overlap; only deals outside
+    both reservations score, otherwise (0, 0).
+    """
+    if deal is None or deal == -1:
+        return 0, 0
+
+    if maximizer_value < minimizer_value:
+        if deal < maximizer_value:
+            return 0, 1
+        if deal > minimizer_value:
+            return 1, 0
+        ratio = round((deal - maximizer_value) / (minimizer_value - maximizer_value), precision)
+        ratio = max(0, min(1, ratio))
+        return ratio, 1 - ratio
+
+    if deal > maximizer_value:
+        return 1, 0
+    if deal < minimizer_value:
+        return 0, 1
+
+    return 0, 0
+
+
+def resolve_initiator_role_index(name_roles, conversation_order):
+    """Resolve which role starts the conversation (1 or 2)."""
+    if not conversation_order:
+        return 1
+
+    normalized = str(conversation_order).strip()
+    if normalized == "same":
+        return 1
+    if normalized == "opposite":
+        return 2
+
+    if normalized == name_roles[0]:
+        return 1
+    if normalized == name_roles[1]:
+        return 2
+
+    return 1
+
+
+def get_role_agent(team, role_index):
+    if role_index == 1:
+        return team["Agent 1"]
+    if role_index == 2:
+        return team["Agent 2"]
+    raise ValueError(f"Invalid role index: {role_index}")
+
+
+def get_minimizer_reservation(team):
+    return team["Value 1"]
+
+
+def get_maximizer_reservation(team):
+    return team["Value 2"]
+
+
+def get_minimizer_maximizer(initiator_team, responder_team, initiator_role_index):
+    if initiator_role_index == 1:
+        return initiator_team, responder_team
+    return responder_team, initiator_team
+
+
+
+
 def is_valid_termination(msg, history, negotiation_termination_message):
     """
     Enhanced termination check that verifies legitimate agreement conclusion
@@ -281,14 +353,10 @@ def is_valid_termination(msg, history, negotiation_termination_message):
     
     return True
 
-def create_agents(game_id, order, teams, values, name_roles, config_list, negotiation_termination_message):
+def create_agents(game_id, teams, values, name_roles, config_list, negotiation_termination_message):
     team_info = []
 
-    if order == "same":
-        role_1, role_2 = name_roles[0].replace(" ", ""), name_roles[1].replace(" ", "")
-
-    elif order == "opposite":
-        role_1, role_2 = name_roles[1].replace(" ", ""), name_roles[0].replace(" ", "")
+    role_1, role_2 = name_roles[0].replace(" ", ""), name_roles[1].replace(" ", "")
 
     if config_list["config_list"][0]["model"] == "gpt-4o-mini":
         words = 50
@@ -310,12 +378,6 @@ def create_agents(game_id, order, teams, values, name_roles, config_list, negoti
             value2 = int(value_dict["maximizer_value"])
 
             prompts = [part.strip() for part in submission.split('#_;:)')]
-
-            if order == "opposite":
-                aux_val = value1
-                value1 = value2
-                value2 = aux_val
-                prompts = prompts[::-1]  # reverse the prompts
 
             # Create a closure to capture chat history
             def create_termination_check(history):
@@ -351,11 +413,15 @@ def create_agents(game_id, order, teams, values, name_roles, config_list, negoti
     return team_info
 
 
-def create_chats(game_id, config_list, name_roles, order, teams, values, num_rounds, starting_message, num_turns,
-                 negotiation_termination_message, summary_prompt, summary_termination_message, progress_callback=None):
+def create_chats(game_id, config_list, name_roles, conversation_order, teams, values, num_rounds, starting_message,
+                 num_turns, negotiation_termination_message, summary_prompt, summary_termination_message,
+                 progress_callback=None):
     schedule = berger_schedule([f'Class{i[0]}_Group{i[1]}' for i in teams], num_rounds)
 
-    team_info = create_agents(game_id, order, teams, values, name_roles, config_list, negotiation_termination_message)
+    team_info = create_agents(game_id, teams, values, name_roles, config_list, negotiation_termination_message)
+    initiator_role_index = resolve_initiator_role_index(name_roles, conversation_order)
+    initiator_role_name = name_roles[initiator_role_index - 1]
+    responder_role_name = name_roles[1 if initiator_role_index == 1 else 0]
 
     user = autogen.UserProxyAgent(
         name="User",
@@ -420,7 +486,7 @@ Be thorough in your analysis and only report an agreement if ALL conditions are 
             insert_round_data(game_id, round_, class1, group1, class2, group2, -1, -1, -1, -1)
 
             if progress_callback:
-                progress_callback(round_, team1, team2, order)
+                progress_callback(round_, team1, team2, initiator_role_name, responder_role_name)
 
             # Attempt to create the first chat
             for attempt in range(max_retries):
@@ -433,64 +499,52 @@ Be thorough in your analysis and only report an agreement if ALL conditions are 
 
                     starting_message += c
 
-                    # First chat
-                    deal = create_chat(game_id, order, team1, team2, starting_message, num_turns, summary_prompt,
-                                       round_, user, summary_agent, summary_termination_message)
+                    minimizer_team, maximizer_team = get_minimizer_maximizer(team1, team2, initiator_role_index)
+                    deal = create_chat(
+                        game_id,
+                        minimizer_team,
+                        maximizer_team,
+                        initiator_role_index,
+                        starting_message,
+                        num_turns,
+                        summary_prompt,
+                        round_,
+                        user,
+                        summary_agent,
+                        summary_termination_message,
+                    )
+                    score_maximizer, score_minimizer = compute_deal_scores(
+                        deal,
+                        get_maximizer_reservation(maximizer_team),
+                        get_minimizer_reservation(minimizer_team),
+                    )
 
-                    if deal == -1:
-                        score1_team1 = 0
-                        score1_team2 = 0
-
-                        update_round_data(game_id, round_, class1, group1, class2, group2, score1_team1, score1_team2,
-                                          order)
-                        completed_matches += 1
-
+                    if minimizer_team is team1:
+                        score_team1, score_team2 = score_minimizer, score_maximizer
+                        team1_role_index, team2_role_index = 1, 2
                     else:
+                        score_team1, score_team2 = score_maximizer, score_minimizer
+                        team1_role_index, team2_role_index = 2, 1
 
-                        if order == "same":
-
-                            if deal > team2["Value 2"]:
-                                score1_team1 = 0
-                                score1_team2 = 1
-
-                            elif deal < team1["Value 1"]:
-                                score1_team1 = 1
-                                score1_team2 = 0
-
-                            else:
-                                score1_team2 = round((deal - team1["Value 1"]) / (team2["Value 2"] - team1["Value 1"]),
-                                                     4)
-                                score1_team1 = 1 - score1_team2
-
-                            # update_round_data(game_id, round_, class1, group1, class2, group2, score1_team1, score1_team2, order)
-
-                        elif order == "opposite":
-
-                            if deal > team1["Value 1"]:
-                                score1_team1 = 1
-                                score1_team2 = 0
-
-                            elif deal < team2["Value 2"]:
-                                score1_team1 = 0
-                                score1_team2 = 1
-
-                            else:
-                                score1_team1 = round((deal - team2["Value 2"]) / (team1["Value 1"] - team2["Value 2"]),
-                                                     4)
-                                score1_team2 = 1 - score1_team1
-
-                        update_round_data(game_id, round_, class1, group1, class2, group2, score1_team1, score1_team2,
-                                          order)
-                        completed_matches += 1
+                    update_round_data(
+                        game_id,
+                        round_,
+                        class1,
+                        group1,
+                        class2,
+                        group2,
+                        score_team1,
+                        score_team2,
+                        team1_role_index,
+                        team2_role_index,
+                    )
+                    completed_matches += 1
 
                     break  # Exit retry loop on success
 
                 except Exception:
                     if attempt == max_retries - 1:
-                        if order == "same":
-                            errors_matchups.append((round_, team1["Name"], team2["Name"]))
-                        elif order == "opposite":
-                            errors_matchups.append((round_, team2["Name"], team1["Name"]))
+                        errors_matchups.append((round_, team1["Name"], team2["Name"]))
 
             # Attempt to create the second chat
             for attempt in range(max_retries):
@@ -503,62 +557,52 @@ Be thorough in your analysis and only report an agreement if ALL conditions are 
 
                     starting_message += c
 
-                    # Second chat
-                    deal = create_chat(game_id, order, team2, team1, starting_message, num_turns, summary_prompt,
-                                       round_, user, summary_agent, summary_termination_message)
+                    minimizer_team, maximizer_team = get_minimizer_maximizer(team2, team1, initiator_role_index)
+                    deal = create_chat(
+                        game_id,
+                        minimizer_team,
+                        maximizer_team,
+                        initiator_role_index,
+                        starting_message,
+                        num_turns,
+                        summary_prompt,
+                        round_,
+                        user,
+                        summary_agent,
+                        summary_termination_message,
+                    )
+                    score_maximizer, score_minimizer = compute_deal_scores(
+                        deal,
+                        get_maximizer_reservation(maximizer_team),
+                        get_minimizer_reservation(minimizer_team),
+                    )
 
-                    if order == "same":
+                    if minimizer_team is team1:
+                        score_team1, score_team2 = score_minimizer, score_maximizer
+                        team1_role_index, team2_role_index = 1, 2
+                    else:
+                        score_team1, score_team2 = score_maximizer, score_minimizer
+                        team1_role_index, team2_role_index = 2, 1
 
-                        if deal == -1:
-                            score2_team1 = 0
-                            score2_team2 = 0
-
-                        elif deal > team1["Value 2"]:
-                            score2_team1 = 1
-                            score2_team2 = 0
-
-                        elif deal < team2["Value 1"]:
-                            score2_team1 = 0
-                            score2_team2 = 1
-
-                        else:
-                            score2_team1 = round((deal - team2["Value 1"]) / (team1["Value 2"] - team2["Value 1"]), 4)
-                            score2_team2 = 1 - score2_team1
-
-                        update_round_data(game_id, round_, class1, group1, class2, group2, score2_team1, score2_team2,
-                                          "opposite")
-                        completed_matches += 1
-
-                    elif order == "opposite":
-
-                        if deal == -1:
-                            score2_team1 = 0
-                            score2_team2 = 0
-
-                        elif deal > team2["Value 1"]:
-                            score2_team1 = 0
-                            score2_team2 = 1
-
-                        elif deal < team1["Value 2"]:
-                            score2_team1 = 1
-                            score2_team2 = 0
-
-                        else:
-                            score2_team2 = round((deal - team1["Value 2"]) / (team2["Value 1"] - team1["Value 2"]), 4)
-                            score2_team1 = 1 - score2_team2
-
-                        update_round_data(game_id, round_, class1, group1, class2, group2, score2_team1, score2_team2,
-                                          "same")
-                        completed_matches += 1
+                    update_round_data(
+                        game_id,
+                        round_,
+                        class1,
+                        group1,
+                        class2,
+                        group2,
+                        score_team1,
+                        score_team2,
+                        team1_role_index,
+                        team2_role_index,
+                    )
+                    completed_matches += 1
 
                     break  # Exit retry loop on success
 
                 except Exception:
                     if attempt == max_retries - 1:
-                        if order == "same":
-                            errors_matchups.append((round_, team2["Name"], team1["Name"]))
-                        elif order == "opposite":
-                            errors_matchups.append((round_, team1["Name"], team2["Name"]))
+                        errors_matchups.append((round_, team2["Name"], team1["Name"]))
 
     # error messages
     if not errors_matchups:
@@ -578,7 +622,7 @@ Be thorough in your analysis and only report an agreement if ALL conditions are 
         return error_message
 
 
-def create_all_error_chats(game_id, config_list, name_roles, order, values, starting_message, num_turns,
+def create_all_error_chats(game_id, config_list, name_roles, conversation_order, values, starting_message, num_turns,
                            negotiation_termination_message, summary_prompt, summary_termination_message):
     matches = get_error_matchups(game_id)
 
@@ -588,8 +632,8 @@ def create_all_error_chats(game_id, config_list, name_roles, order, values, star
     unique_teams = set(tuple(item) for item in (teams1 + teams2))
     teams = [list(team) for team in unique_teams]
 
-    team_info = create_agents(game_id, order, teams, values, name_roles, config_list, negotiation_termination_message)
-
+    team_info = create_agents(game_id, teams, values, name_roles, config_list, negotiation_termination_message)
+    initiator_role_index = resolve_initiator_role_index(name_roles, conversation_order)
     user = autogen.UserProxyAgent(
         name="User",
         llm_config=config_list,
@@ -641,6 +685,8 @@ Be thorough in your analysis and only report an agreement if ALL conditions are 
             continue  # Skip this match
 
         if match[3] == 1:
+            minimizer_team = team1
+            maximizer_team = team2
 
             for attempt in range(max_retries):
                 try:
@@ -652,65 +698,48 @@ Be thorough in your analysis and only report an agreement if ALL conditions are 
 
                     starting_message += c
 
-                    if order == "same":
+                    deal = create_chat(
+                        game_id,
+                        minimizer_team,
+                        maximizer_team,
+                        initiator_role_index,
+                        starting_message,
+                        num_turns,
+                        summary_prompt,
+                        match[0],
+                        user,
+                        summary_agent,
+                        summary_termination_message,
+                    )
+                    score_maximizer, score_minimizer = compute_deal_scores(
+                        deal,
+                        get_maximizer_reservation(maximizer_team),
+                        get_minimizer_reservation(minimizer_team),
+                    )
 
-                        deal = create_chat(game_id, order, team1, team2, starting_message, num_turns, summary_prompt,
-                                           match[0], user, summary_agent, summary_termination_message)
-
-                        if deal == -1:
-                            score1_team1 = 0
-                            score1_team2 = 0
-
-                        else:
-
-                            if deal > team2["Value 2"]:
-                                score1_team1 = 0
-                                score1_team2 = 1
-
-                            elif deal < team1["Value 1"]:
-                                score1_team1 = 1
-                                score1_team2 = 0
-
-                            else:
-                                score1_team2 = round((deal - team1["Value 1"]) / (team2["Value 2"] - team1["Value 1"]),
-                                                     4)
-                                score1_team1 = 1 - score1_team2
-
-                    elif order == "opposite":
-
-                        deal = create_chat(game_id, order, team2, team1, starting_message, num_turns, summary_prompt,
-                                           match[0], user, summary_agent, summary_termination_message)
-
-                        if deal == -1:
-                            score1_team1 = 0
-                            score1_team2 = 0
-
-                        else:
-
-                            if deal > team2["Value 1"]:
-                                score1_team1 = 0
-                                score1_team2 = 1
-
-                            elif deal < team1["Value 2"]:
-                                score1_team1 = 1
-                                score1_team2 = 0
-
-                            else:
-                                score1_team2 = round((deal - team1["Value 2"]) / (team2["Value 1"] - team1["Value 2"]),
-                                                     4)
-                                score1_team1 = 1 - score1_team2
-
-                    update_round_data(game_id, match[0], match[1][0], match[1][1], match[2][0], match[2][1],
-                                      score1_team1, score1_team2, "same")
+                    update_round_data(
+                        game_id,
+                        match[0],
+                        match[1][0],
+                        match[1][1],
+                        match[2][0],
+                        match[2][1],
+                        score_minimizer,
+                        score_maximizer,
+                        1,
+                        2,
+                    )
 
                     break
 
                 except Exception:
 
                     if attempt == max_retries - 1:
-                        errors_matchups.append((match[0], team1["Name"], team2["Name"]))
+                        errors_matchups.append((match[0], minimizer_team["Name"], maximizer_team["Name"]))
 
         if match[4] == 1:
+            minimizer_team = team2
+            maximizer_team = team1
 
             for attempt in range(max_retries):
 
@@ -723,63 +752,44 @@ Be thorough in your analysis and only report an agreement if ALL conditions are 
 
                     starting_message += c
 
-                    if order == "same":
+                    deal = create_chat(
+                        game_id,
+                        minimizer_team,
+                        maximizer_team,
+                        initiator_role_index,
+                        starting_message,
+                        num_turns,
+                        summary_prompt,
+                        match[0],
+                        user,
+                        summary_agent,
+                        summary_termination_message,
+                    )
+                    score_maximizer, score_minimizer = compute_deal_scores(
+                        deal,
+                        get_maximizer_reservation(maximizer_team),
+                        get_minimizer_reservation(minimizer_team),
+                    )
 
-                        deal = create_chat(game_id, order, team2, team1, starting_message, num_turns, summary_prompt,
-                                           match[0], user, summary_agent, summary_termination_message)
-
-                        if deal == -1:
-                            score2_team1 = 0
-                            score2_team2 = 0
-
-                        else:
-
-                            if deal > team1["Value 2"]:
-                                score2_team1 = 1
-                                score2_team2 = 0
-
-                            elif deal < team2["Value 1"]:
-                                score2_team1 = 0
-                                score2_team2 = 1
-
-                            else:
-                                score2_team1 = round((deal - team2["Value 1"]) / (team1["Value 2"] - team2["Value 1"]),
-                                                     4)
-                                score2_team2 = 1 - score2_team1
-
-                    elif order == "opposite":
-
-                        deal = create_chat(game_id, order, team1, team2, starting_message, num_turns, summary_prompt,
-                                           match[0], user, summary_agent, summary_termination_message)
-
-                        if deal == -1:
-                            score2_team1 = 0
-                            score2_team2 = 0
-
-                        else:
-
-                            if deal > team1["Value 1"]:
-                                score2_team1 = 1
-                                score2_team2 = 0
-
-                            elif deal < team2["Value 2"]:
-                                score2_team1 = 0
-                                score2_team2 = 1
-
-                            else:
-                                score2_team1 = round((deal - team2["Value 2"]) / (team1["Value 1"] - team2["Value 2"]),
-                                                     4)
-                                score2_team2 = 1 - score2_team1
-
-                    update_round_data(game_id, match[0], match[1][0], match[1][1], match[2][0], match[2][1],
-                                      score2_team1, score2_team2, "opposite")
+                    update_round_data(
+                        game_id,
+                        match[0],
+                        match[1][0],
+                        match[1][1],
+                        match[2][0],
+                        match[2][1],
+                        score_maximizer,
+                        score_minimizer,
+                        2,
+                        1,
+                    )
 
                     break
 
                 except Exception:
 
                     if attempt == max_retries - 1:
-                        errors_matchups.append((match[0], team2["Name"], team1["Name"]))
+                        errors_matchups.append((match[0], minimizer_team["Name"], maximizer_team["Name"]))
 
     if not errors_matchups:
         return "All negotiations were completed successfully!"

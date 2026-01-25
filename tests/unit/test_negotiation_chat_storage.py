@@ -22,16 +22,14 @@ def real_database_handler(mock_psycopg2):
     cursor.__enter__ = MagicMock(return_value=cursor)
     cursor.__exit__ = MagicMock(return_value=False)
 
-    # Remove any mocked version of the module
+    # Remove any mocked version of the module to ensure a clean import
     if "modules.database_handler" in sys.modules:
         if isinstance(sys.modules["modules.database_handler"], MagicMock):
             del sys.modules["modules.database_handler"]
+        else:
+            del sys.modules["modules.database_handler"]
 
-    # Import the module
-    from modules import database_handler
-
-    # Reload to ensure we have the real module
-    importlib.reload(database_handler)
+    database_handler = importlib.import_module("modules.database_handler")
 
     return database_handler, cursor
 
