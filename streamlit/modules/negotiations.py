@@ -485,6 +485,18 @@ def build_llm_config(model, api_key, temperature=0.3, top_p=0.5):
         config_list["top_p"] = top_p
     return config_list
 
+
+def is_invalid_api_key_error(error):
+    message = str(error).lower()
+    return (
+        "invalid api key" in message
+        or "incorrect api key" in message
+        or "invalid_api_key" in message
+        or "unauthorized" in message
+        or "authentication" in message
+        or "401" in message
+    )
+
 def create_agents(game_id, teams, values, name_roles, config_list, negotiation_termination_message):
     team_info = []
 

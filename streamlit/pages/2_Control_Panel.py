@@ -10,7 +10,13 @@ from modules.database_handler import populate_plays_table, insert_student_data, 
 from modules.database_handler import get_academic_year_class_combinations, get_game_by_id, fetch_games_data, get_next_game_id, get_students_from_db, get_group_ids_from_game_id, get_round_data, get_error_matchups, fetch_and_compute_scores_for_year_game, get_negotiation_chat_details
 from modules.database_handler import get_all_group_values, get_student_prompt, get_student_prompt_with_timestamp, upsert_game_simulation_params, get_game_simulation_params, delete_negotiation_chats
 from modules.database_handler import list_user_api_keys, get_user_api_key
-from modules.negotiations import create_chats, create_all_error_chats, extract_summary_from_transcript, build_llm_config
+from modules.negotiations import (
+    create_chats,
+    create_all_error_chats,
+    extract_summary_from_transcript,
+    build_llm_config,
+    is_invalid_api_key_error,
+)
 from modules.negotiation_display import render_chat_summary
 from modules.metrics_handler import record_page_entry, record_page_exit
 from modules.student_utils import process_student_csv
@@ -371,6 +377,7 @@ def render_control_center():
                 key_options = {
                     key["key_name"]: key["key_id"] for key in saved_keys
                 }
+                has_keys = bool(key_options)
                 if not key_options:
                     st.info("No API keys saved. Add one in Profile to run simulations.")
 
@@ -472,7 +479,7 @@ def render_control_center():
                             key="cc_summary_termination_message",
                         )
 
-                        submit_button = st.form_submit_button(label='Run')
+                        submit_button = st.form_submit_button(label='Run', disabled=not has_keys)
 
                     if submit_button:
                         resolved_api_key = None
@@ -535,21 +542,33 @@ def render_control_center():
                                 )
 
                             with st.spinner("Running negotiations..."):
-                                outcome_simulation = create_chats(
-                                    game_id,
-                                    config_list,
-                                    name_roles,
-                                    initiator_role,
-                                    teams,
-                                    values,
-                                    rounds_to_run,
-                                    starting_message,
-                                    num_turns,
-                                    negotiation_termination_message,
-                                    summary_prompt,
-                                    summary_termination_message,
-                                    progress_callback=update_progress,
-                                )
+                                try:
+                                    outcome_simulation = create_chats(
+                                        game_id,
+                                        config_list,
+                                        name_roles,
+                                        initiator_role,
+                                        teams,
+                                        values,
+                                        rounds_to_run,
+                                        starting_message,
+                                        num_turns,
+                                        negotiation_termination_message,
+                                        summary_prompt,
+                                        summary_termination_message,
+                                        progress_callback=update_progress,
+                                    )
+                                except Exception as e:
+                                    progress_placeholder.empty()
+                                    progress_bar.empty()
+                                    progress_caption.empty()
+                                    progress_header.empty()
+                                    status_placeholder.empty()
+                                    if is_invalid_api_key_error(e):
+                                        st.error("Your API key appears invalid or unauthorized. Update it in Profile and try again.")
+                                    else:
+                                        st.error(f"Simulation failed: {str(e)}")
+                                    st.stop()
                             progress_placeholder.empty()
                             progress_bar.empty()
                             progress_caption.empty()
@@ -577,6 +596,7 @@ def render_control_center():
                 key_options = {
                     key["key_name"]: key["key_id"] for key in saved_keys
                 }
+                has_keys = bool(key_options)
                 if not key_options:
                     st.info("No API keys saved. Add one in Profile to re-run error chats.")
 
@@ -608,7 +628,7 @@ def render_control_center():
                             help="Model descriptions are shown in the dropdown. Pick the best balance of cost and quality.",
                             key="cc_error_model",
                         )
-                        submit_button = st.form_submit_button(label='Run')
+                        submit_button = st.form_submit_button(label='Run', disabled=not has_keys)
 
                     if submit_button:
                         resolved_api_key = None
@@ -629,18 +649,25 @@ def render_control_center():
                                 st.stop()
 
                             with st.spinner("Re-running error chats..."):
-                                outcome_errors_simulation = create_all_error_chats(
-                                    game_id,
-                                    config_list,
-                                    name_roles,
-                                    simulation_params["conversation_order"],
-                                    values,
-                                    simulation_params["starting_message"],
-                                    simulation_params["num_turns"],
-                                    simulation_params["negotiation_termination_message"],
-                                    simulation_params["summary_prompt"],
-                                    simulation_params["summary_termination_message"],
-                                )
+                                try:
+                                    outcome_errors_simulation = create_all_error_chats(
+                                        game_id,
+                                        config_list,
+                                        name_roles,
+                                        simulation_params["conversation_order"],
+                                        values,
+                                        simulation_params["starting_message"],
+                                        simulation_params["num_turns"],
+                                        simulation_params["negotiation_termination_message"],
+                                        simulation_params["summary_prompt"],
+                                        simulation_params["summary_termination_message"],
+                                    )
+                                except Exception as e:
+                                    if is_invalid_api_key_error(e):
+                                        st.error("Your API key appears invalid or unauthorized. Update it in Profile and try again.")
+                                    else:
+                                        st.error(f"Error chat run failed: {str(e)}")
+                                    st.stop()
                             if outcome_errors_simulation == "All negotiations were completed successfully!":
                                 st.success(outcome_errors_simulation)
                                 st.rerun()

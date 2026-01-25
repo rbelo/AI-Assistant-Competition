@@ -10,6 +10,7 @@ from modules.negotiations import (
     build_summary_agents,
     evaluate_deal_summary,
     build_llm_config,
+    is_invalid_api_key_error,
 )
 from modules.negotiation_display import render_chat_summary
 from modules.sidebar import render_sidebar
@@ -183,8 +184,9 @@ else:
             key_options = {
                 key["key_name"]: key["key_id"] for key in saved_keys
             }
+            has_keys = bool(key_options)
             selected_key_id = None
-            if key_options:
+            if has_keys:
                 selected_label = st.selectbox(
                     "API Key",
                     options=list(key_options.keys()),
@@ -195,7 +197,7 @@ else:
                 st.info("No API keys saved. Add one in Profile to run a playground test.")
             save_results = st.checkbox("Save Results", value=True)
 
-            submit_button = st.form_submit_button("Run Test Negotiation")
+            submit_button = st.form_submit_button("Run Test Negotiation", disabled=not has_keys)
 
         if submit_button:
             resolved_api_key = None
@@ -272,7 +274,10 @@ else:
                         else:
                             st.error("Failed to save results.")
                 except Exception as e:
-                    st.error(f"An error occurred during the negotiation: {str(e)}")
+                    if is_invalid_api_key_error(e):
+                        st.error("Your API key appears invalid or unauthorized. Update it in Profile and try again.")
+                    else:
+                        st.error(f"An error occurred during the negotiation: {str(e)}")
 
     with tab2:
         st.header("My Previous Tests")

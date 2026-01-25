@@ -12,7 +12,7 @@ import streamlit as st
 import re
 import autogen
 from .database_handler import get_group_id_from_user_id, get_class_from_user_id, insert_playground_result, get_playground_results
-from .negotiations import is_valid_termination, build_llm_config
+from .negotiations import is_valid_termination, build_llm_config, is_invalid_api_key_error
 
 # Function for cleaning dialogue messages to remove agent name prefixes
 def clean_agent_message(agent_name_1, agent_name_2, message):
@@ -199,7 +199,10 @@ def display_student_playground():
                             st.error("Failed to save results.")
 
                 except Exception as e:
-                    st.error(f"An error occurred during the negotiation: {str(e)}")
+                    if is_invalid_api_key_error(e):
+                        st.error("Your API key appears invalid or unauthorized. Update it and try again.")
+                    else:
+                        st.error(f"An error occurred during the negotiation: {str(e)}")
 
     with tab2:
         st.header("My Previous Tests")

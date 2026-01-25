@@ -1375,78 +1375,6 @@ def update_password(email, new_password):
         return False
 
 
-def upsert_instructor_api_key(user_id, api_key):
-    """Store an encrypted API key for an instructor."""
-    cipher = _get_api_key_cipher()
-    if not cipher:
-        return False
-    conn = get_connection()
-    if not conn:
-        return False
-    try:
-        encrypted_key = cipher.encrypt(api_key.encode()).decode()
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                CREATE TABLE IF NOT EXISTS instructor_api_key (
-                    user_id VARCHAR(50) PRIMARY KEY,
-                    encrypted_key TEXT NOT NULL,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES user_(user_id) ON DELETE CASCADE
-                );
-                """
-            )
-            query = """
-                INSERT INTO instructor_api_key (user_id, encrypted_key, updated_at)
-                VALUES (%(user_id)s, %(encrypted_key)s, CURRENT_TIMESTAMP)
-                ON CONFLICT (user_id)
-                DO UPDATE SET encrypted_key = EXCLUDED.encrypted_key,
-                              updated_at = CURRENT_TIMESTAMP;
-            """
-            cur.execute(query, {'user_id': user_id, 'encrypted_key': encrypted_key})
-            conn.commit()
-            return True
-    except Exception as e:
-        conn.rollback()
-        print(f"Error in upsert_instructor_api_key: {e}")
-        return False
-
-
-def get_instructor_api_key(user_id):
-    """Retrieve and decrypt an instructor API key."""
-    cipher = _get_api_key_cipher()
-    if not cipher:
-        return None
-    conn = get_connection()
-    if not conn:
-        return None
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                CREATE TABLE IF NOT EXISTS instructor_api_key (
-                    user_id VARCHAR(50) PRIMARY KEY,
-                    encrypted_key TEXT NOT NULL,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES user_(user_id) ON DELETE CASCADE
-                );
-                """
-            )
-            query = "SELECT encrypted_key FROM instructor_api_key WHERE user_id = %(user_id)s;"
-            cur.execute(query, {'user_id': user_id})
-            row = cur.fetchone()
-            if not row:
-                return None
-            try:
-                return cipher.decrypt(row[0].encode()).decode()
-            except InvalidToken:
-                print("Failed to decrypt instructor API key. Invalid encryption key.")
-                return None
-    except Exception as e:
-        print(f"Error in get_instructor_api_key: {e}")
-        return None
-
-
 def _ensure_user_api_key_table(cur):
     cur.execute(
         """
@@ -1462,38 +1390,6 @@ def _ensure_user_api_key_table(cur):
         );
         """
     )
-
-
-def _maybe_migrate_instructor_key(cur, user_id):
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS instructor_api_key (
-            user_id VARCHAR(50) PRIMARY KEY,
-            encrypted_key TEXT NOT NULL,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES user_(user_id) ON DELETE CASCADE
-        );
-        """
-    )
-    cur.execute(
-        "SELECT encrypted_key FROM instructor_api_key WHERE user_id = %(user_id)s;",
-        {"user_id": user_id},
-    )
-    row = cur.fetchone()
-    if not row:
-        return None
-    cur.execute(
-        """
-        INSERT INTO user_api_key (user_id, key_name, encrypted_key, created_at, updated_at)
-        VALUES (%(user_id)s, %(key_name)s, %(encrypted_key)s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        ON CONFLICT (user_id, key_name)
-        DO UPDATE SET encrypted_key = EXCLUDED.encrypted_key,
-                      updated_at = CURRENT_TIMESTAMP
-        RETURNING key_id, key_name, updated_at;
-        """,
-        {"user_id": user_id, "key_name": "Imported key", "encrypted_key": row[0]},
-    )
-    return cur.fetchone()
 
 
 def list_user_api_keys(user_id):
@@ -1517,11 +1413,6 @@ def list_user_api_keys(user_id):
                 {"user_id": user_id},
             )
             rows = cur.fetchall()
-            if not rows:
-                migrated = _maybe_migrate_instructor_key(cur, user_id)
-                if migrated:
-                    conn.commit()
-                    rows = [migrated]
             return [
                 {"key_id": row[0], "key_name": row[1], "updated_at": row[2]}
                 for row in rows

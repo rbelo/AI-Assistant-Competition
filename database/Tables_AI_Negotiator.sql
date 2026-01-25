@@ -2,7 +2,6 @@
 DROP TABLE IF EXISTS student_prompt CASCADE;
 DROP TABLE IF EXISTS playground_result CASCADE;
 DROP TABLE IF EXISTS game_simulation_params CASCADE;
-DROP TABLE IF EXISTS instructor_api_key CASCADE;
 DROP TABLE IF EXISTS user_api_key CASCADE;
 DROP TABLE IF EXISTS negotiation_chat CASCADE;
 DROP TABLE IF EXISTS instructor CASCADE;
@@ -35,15 +34,6 @@ CREATE TABLE instructor (
     permission_level VARCHAR(20) NOT NULL,                                -- Permission level for the instructor, cannot be null
     PRIMARY KEY(user_id),                                                 -- Set username as the primary key
     FOREIGN KEY(user_id) REFERENCES user_(user_id)                        -- Foreign key linking to the username in the user table
-);
-
--- instructor_api_key table
-CREATE TABLE instructor_api_key (
-    user_id VARCHAR(50),
-    encrypted_key TEXT NOT NULL,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY(user_id),
-    FOREIGN KEY(user_id) REFERENCES user_(user_id) ON DELETE CASCADE
 );
 
 -- user_api_key table
