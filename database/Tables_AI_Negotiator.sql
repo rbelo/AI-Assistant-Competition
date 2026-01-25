@@ -235,5 +235,9 @@ CREATE TABLE playground_result (
     role1_name TEXT,
     role2_name TEXT,
     transcript TEXT NOT NULL,
+    summary TEXT,
+    deal_value FLOAT,
+    score_role1 FLOAT,
+    score_role2 FLOAT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

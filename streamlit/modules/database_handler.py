@@ -874,7 +874,8 @@ def delete_negotiation_chats(game_id):
         return False
 
 
-def insert_playground_result(user_id, class_, group_id, role1_name, role2_name, transcript):
+def insert_playground_result(user_id, class_, group_id, role1_name, role2_name, transcript,
+                             summary=None, deal_value=None, score_role1=None, score_role2=None):
     """Store a playground negotiation transcript."""
     conn = get_connection()
     if not conn:
@@ -891,27 +892,58 @@ def insert_playground_result(user_id, class_, group_id, role1_name, role2_name, 
                     role1_name TEXT,
                     role2_name TEXT,
                     transcript TEXT NOT NULL,
+                    summary TEXT,
+                    deal_value FLOAT,
+                    score_role1 FLOAT,
+                    score_role2 FLOAT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
                 """
             )
-            query = """
-                INSERT INTO playground_result (
-                    user_id, class, group_id, role1_name, role2_name, transcript
-                )
-                VALUES (
-                    %(user_id)s, %(class)s, %(group_id)s, %(role1_name)s, %(role2_name)s, %(transcript)s
-                )
-                RETURNING id;
-            """
-            cur.execute(query, {
+            cur.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = 'playground_result';
+                """
+            )
+            columns = {row[0] for row in cur.fetchall()}
+
+            insert_cols = ["user_id", "class", "group_id", "role1_name", "role2_name", "transcript"]
+            values = {
                 'user_id': user_id,
                 'class': class_,
                 'group_id': group_id,
                 'role1_name': role1_name,
                 'role2_name': role2_name,
                 'transcript': transcript,
-            })
+            }
+
+            if "summary" in columns:
+                insert_cols.append("summary")
+                values["summary"] = summary
+            if "deal_value" in columns:
+                insert_cols.append("deal_value")
+                values["deal_value"] = deal_value
+            if "score_role1" in columns:
+                insert_cols.append("score_role1")
+                values["score_role1"] = score_role1
+            if "score_role2" in columns:
+                insert_cols.append("score_role2")
+                values["score_role2"] = score_role2
+
+            cols_sql = ", ".join(insert_cols)
+            params_sql = ", ".join(f"%({col})s" for col in insert_cols)
+            query = f"""
+                INSERT INTO playground_result (
+                    {cols_sql}
+                )
+                VALUES (
+                    {params_sql}
+                )
+                RETURNING id;
+            """
+            cur.execute(query, values)
             result_id = cur.fetchone()[0]
             cur.execute(
                 """
@@ -957,12 +989,35 @@ def get_playground_results(user_id, class_, group_id, limit=20):
                     role1_name TEXT,
                     role2_name TEXT,
                     transcript TEXT NOT NULL,
+                    summary TEXT,
+                    deal_value FLOAT,
+                    score_role1 FLOAT,
+                    score_role2 FLOAT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
                 """
             )
-            query = """
-                SELECT id, role1_name, role2_name, transcript, created_at
+            cur.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = 'playground_result';
+                """
+            )
+            columns = {row[0] for row in cur.fetchall()}
+            select_cols = ["id", "role1_name", "role2_name", "transcript"]
+            if "summary" in columns:
+                select_cols.append("summary")
+            if "deal_value" in columns:
+                select_cols.append("deal_value")
+            if "score_role1" in columns:
+                select_cols.append("score_role1")
+            if "score_role2" in columns:
+                select_cols.append("score_role2")
+            select_cols.append("created_at")
+            cols_sql = ", ".join(select_cols)
+            query = f"""
+                SELECT {cols_sql}
                 FROM playground_result
                 WHERE user_id = %(user_id)s
                   AND class = %(class)s
@@ -979,12 +1034,17 @@ def get_playground_results(user_id, class_, group_id, limit=20):
             rows = cur.fetchall()
             results = []
             for row in rows:
+                row_data = dict(zip(select_cols, row))
                 results.append({
-                    "id": row[0],
-                    "role1_name": row[1],
-                    "role2_name": row[2],
-                    "transcript": row[3],
-                    "created_at": row[4],
+                    "id": row_data.get("id"),
+                    "role1_name": row_data.get("role1_name"),
+                    "role2_name": row_data.get("role2_name"),
+                    "transcript": row_data.get("transcript"),
+                    "summary": row_data.get("summary"),
+                    "deal_value": row_data.get("deal_value"),
+                    "score_role1": row_data.get("score_role1"),
+                    "score_role2": row_data.get("score_role2"),
+                    "created_at": row_data.get("created_at"),
                 })
             return results
     except Exception as e:

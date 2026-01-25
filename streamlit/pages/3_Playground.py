@@ -4,13 +4,22 @@ import autogen
 from modules.database_handler import get_group_id_from_user_id, get_class_from_user_id, insert_playground_result, get_playground_results
 from modules.database_handler import delete_playground_result, delete_all_playground_results
 from modules.database_handler import get_instructor_api_key, upsert_instructor_api_key
-from modules.negotiations import is_valid_termination
+from modules.negotiations import (
+    is_valid_termination,
+    compute_deal_scores,
+    build_summary_agents,
+    evaluate_deal_summary,
+)
 from modules.sidebar import render_sidebar
 
 # Set page configuration
 st.set_page_config(page_title="AI Assistant Playground", page_icon="🧪")
 
 render_sidebar()
+
+NEGOTIATION_TERMINATION_MESSAGE = "Pleasure doing business with you"
+SUMMARY_TERMINATION_MESSAGE = "The value agreed was"
+SUMMARY_PROMPT = "Summarize the negotiation and determine if there was a valid agreement."
 
 
 # Function for cleaning dialogue messages to remove agent name prefixes
@@ -30,7 +39,7 @@ def clean_agent_message(agent_name_1, agent_name_2, message):
 # Function to create and run test negotiations
 def run_playground_negotiation(role1_prompt, role2_prompt, role1_name, role2_name,
                                starting_message, num_turns, api_key, model="gpt-4o-mini",
-                               negotiation_termination_message="Pleasure doing business with you"):
+                               negotiation_termination_message=NEGOTIATION_TERMINATION_MESSAGE):
     # Configure agents
     config_list = {"config_list": [{"model": model, "api_key": api_key}],
                    "temperature": 0.3, "top_p": 0.5}
@@ -82,7 +91,8 @@ def run_playground_negotiation(role1_prompt, role2_prompt, role1_name, role2_nam
 
 # Save playground negotiation results for future reference
 def save_playground_results(user_id, class_, group_id, role1_name, role2_name,
-                            negotiation_text):
+                            negotiation_text, summary=None, deal_value=None,
+                            score_role1=None, score_role2=None):
     return insert_playground_result(
         user_id=user_id,
         class_=class_,
@@ -90,6 +100,10 @@ def save_playground_results(user_id, class_, group_id, role1_name, role2_name,
         role1_name=role1_name,
         role2_name=role2_name,
         transcript=negotiation_text,
+        summary=summary,
+        deal_value=deal_value,
+        score_role1=score_role1,
+        score_role2=score_role2,
     )
 
 
@@ -168,19 +182,74 @@ else:
                                 st.error("Failed to save API key. Check API_KEY_ENCRYPTION_KEY.")
                         negotiation_text, chat_history = run_playground_negotiation(
                             role1_prompt, role2_prompt, role1_name, role2_name,
-                            starting_message, num_turns, resolved_api_key, model
+                            starting_message, num_turns, resolved_api_key, model,
+                            NEGOTIATION_TERMINATION_MESSAGE
                         )
+                        summary_text = ""
+                        deal_value = None
+                        try:
+                            summary_config = {"config_list": [{"model": model, "api_key": resolved_api_key}],
+                                              "temperature": 0.3, "top_p": 0.5}
+                            user, summary_agent = build_summary_agents(
+                                summary_config,
+                                SUMMARY_TERMINATION_MESSAGE,
+                                NEGOTIATION_TERMINATION_MESSAGE,
+                                include_summary=True,
+                            )
+                            summary_text, deal_value = evaluate_deal_summary(
+                                chat_history,
+                                SUMMARY_PROMPT,
+                                SUMMARY_TERMINATION_MESSAGE,
+                                user,
+                                summary_agent,
+                                role1_name=role1_name,
+                                role2_name=role2_name,
+                                history_size=None,
+                            )
+                        except Exception:
+                            st.warning("Summary generation failed for this run.")
+
+                        score_role1 = None
+                        score_role2 = None
+                        if deal_value is not None:
+                            score_role2, score_role1 = compute_deal_scores(
+                                deal_value,
+                                role2_value,
+                                role1_value,
+                            )
 
                         # Display results
                         st.success("Test negotiation completed!")
                         st.subheader("Negotiation Results")
                         st.text_area("Negotiation Transcript", negotiation_text, height=400)
+                        st.subheader("Negotiation Summary")
+                        if summary_text:
+                            st.write(summary_text)
+                        else:
+                            st.info("Summary unavailable for this run.")
+
+                        if deal_value is None:
+                            st.info("No deal value could be parsed for scoring.")
+                        elif deal_value == -1 or score_role1 == -1 or score_role2 == -1:
+                            st.info("No valid agreement detected.")
+                            col1, col2 = st.columns(2)
+                            col1.metric(f"{role1_name} Score", "0.0")
+                            col2.metric(f"{role2_name} Score", "0.0")
+                        else:
+                            col1, col2, col3 = st.columns(3)
+                            col1.metric("Agreed Value", f"{deal_value:.2f}")
+                            col2.metric(f"{role1_name} Score", f"{score_role1 * 100:.1f}")
+                            col3.metric(f"{role2_name} Score", f"{score_role2 * 100:.1f}")
+                            st.caption(
+                                "Scores assume Role 1 is the minimizer and Role 2 is the maximizer."
+                            )
 
                         # Save results if requested
                         if save_results:
                             result_id = save_playground_results(
                                 user_id, class_, group_id, role1_name, role2_name,
-                                negotiation_text
+                                negotiation_text, summary_text, deal_value,
+                                score_role1, score_role2
                             )
                             if result_id:
                                 st.success(f"Results saved successfully! Reference ID: {result_id}")
@@ -192,6 +261,7 @@ else:
 
     with tab2:
         st.header("My Previous Tests")
+        st.caption("Only the last 20 tests are kept.")
 
         # Check for and display previous tests
         previous_tests = find_playground_results(class_, group_id)
@@ -229,12 +299,41 @@ else:
                             st.rerun()
                         else:
                             st.error("Failed to delete test.")
-                    st.text_area(
-                        "Negotiation Transcript",
-                        test_result["transcript"],
-                        height=400,
-                        key=f"test_{test_result['id']}",
-                    )
+                    if test_result.get("summary"):
+                        st.markdown("**Summary**")
+                        st.write(test_result["summary"])
+                    else:
+                        st.info("Summary unavailable for this test.")
+
+                    deal_value = test_result.get("deal_value")
+                    score_role1 = test_result.get("score_role1")
+                    score_role2 = test_result.get("score_role2")
+                    if deal_value is None or score_role1 is None or score_role2 is None:
+                        st.info("Scores unavailable for this test.")
+                    elif deal_value == -1 or score_role1 == -1 or score_role2 == -1:
+                        st.info("No valid agreement detected.")
+                        col1, col2 = st.columns(2)
+                        col1.metric(f"{test_result['role1_name'] or 'Role 1'} Score", "0.0")
+                        col2.metric(f"{test_result['role2_name'] or 'Role 2'} Score", "0.0")
+                    else:
+                        col1, col2, col3 = st.columns(3)
+                        col1.metric("Agreed Value", f"{deal_value:.2f}")
+                        col2.metric(
+                            f"{test_result['role1_name'] or 'Role 1'} Score",
+                            f"{score_role1 * 100:.1f}",
+                        )
+                        col3.metric(
+                            f"{test_result['role2_name'] or 'Role 2'} Score",
+                            f"{score_role2 * 100:.1f}",
+                        )
+
+                    with st.expander("View full transcript", expanded=False):
+                        st.text_area(
+                            "Negotiation Transcript",
+                            test_result["transcript"],
+                            height=400,
+                            key=f"test_{test_result['id']}",
+                        )
         else:
             st.info("You don't have any previous playground tests. Create a new test to see results here.")
 
