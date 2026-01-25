@@ -9,7 +9,7 @@ from modules.sidebar import render_sidebar
 from modules.database_handler import populate_plays_table, insert_student_data, remove_student, store_game_in_db, update_game_in_db, update_num_rounds_game, update_access_to_chats, delete_from_round, store_group_values, store_game_parameters, get_game_parameters
 from modules.database_handler import get_academic_year_class_combinations, get_game_by_id, fetch_games_data, get_next_game_id, get_students_from_db, get_group_ids_from_game_id, get_round_data, get_error_matchups, fetch_and_compute_scores_for_year_game, get_negotiation_chat_details
 from modules.database_handler import get_all_group_values, get_student_prompt, get_student_prompt_with_timestamp, upsert_game_simulation_params, get_game_simulation_params, delete_negotiation_chats
-from modules.database_handler import get_instructor_api_key, upsert_instructor_api_key
+from modules.database_handler import list_user_api_keys, get_user_api_key
 from modules.negotiations import create_chats, create_all_error_chats, extract_summary_from_transcript
 from modules.negotiation_display import render_chat_summary
 from modules.metrics_handler import record_page_entry, record_page_exit
@@ -367,18 +367,12 @@ def render_control_center():
 
             sim_tabs = st.tabs(["Run Simulation", "Error Chats"])
             with sim_tabs[0]:
-                saved_api_key = get_instructor_api_key(st.session_state.get('user_id'))
-                use_saved_api_key = st.checkbox(
-                    "Use saved API key",
-                    value=bool(saved_api_key),
-                    key="cc_use_saved_api_key_sim",
-                )
-                api_key_key = "cc_api_key_sim"
-                if use_saved_api_key and saved_api_key:
-                    if st.session_state.get(api_key_key) != saved_api_key:
-                        st.session_state[api_key_key] = saved_api_key
-                elif st.session_state.get(api_key_key) == saved_api_key:
-                    st.session_state[api_key_key] = ""
+                saved_keys = list_user_api_keys(st.session_state.get('user_id'))
+                key_options = {
+                    key["key_name"]: key["key_id"] for key in saved_keys
+                }
+                if not key_options:
+                    st.info("No API keys saved. Add one in Profile to run simulations.")
 
                 teams = get_group_ids_from_game_id(game_id)
                 if teams is False:
@@ -421,8 +415,14 @@ def render_control_center():
                         "This includes all group chats and all group scores."
                     )
                     with st.form(key='cc_simulation_form'):
-                        api_key = st.text_input('API Key', type="password", key=api_key_key)
-                        save_api_key = st.checkbox("Save API key", value=False, key="cc_save_api_key_sim")
+                        selected_key_id = None
+                        if key_options:
+                            selected_label = st.selectbox(
+                                "API Key",
+                                options=list(key_options.keys()),
+                                key="cc_api_key_select_sim",
+                            )
+                            selected_key_id = key_options[selected_label]
                         model = st.selectbox('OpenAI Model', ['gpt-4o-mini', 'gpt-4o'], index=0 if default_model == 'gpt-4o-mini' else 1, key="cc_model")
                         max_opponents = max(len(teams) - 1, 1)
                         opponents_per_team = st.number_input(
@@ -461,14 +461,14 @@ def render_control_center():
                         submit_button = st.form_submit_button(label='Run')
 
                     if submit_button:
-                        resolved_api_key = api_key or (saved_api_key if use_saved_api_key else "")
+                        resolved_api_key = None
+                        if selected_key_id:
+                            resolved_api_key = get_user_api_key(st.session_state.get('user_id'), selected_key_id)
 
-                        if resolved_api_key and model and opponents_per_team and conversation_starter and starting_message and num_turns and \
+                        if not resolved_api_key:
+                            st.error("Please select a saved API key to run the simulation.")
+                        elif resolved_api_key and model and opponents_per_team and conversation_starter and starting_message and num_turns and \
                             negotiation_termination_message and summary_prompt and summary_termination_message:
-                            if save_api_key and api_key:
-                                if not upsert_instructor_api_key(st.session_state.get('user_id'), api_key):
-                                    st.error("Failed to save API key. Check API_KEY_ENCRYPTION_KEY.")
-
                             status_placeholder = st.empty()
                             delete_from_round(game_id)
                             delete_negotiation_chats(game_id)
@@ -559,18 +559,12 @@ def render_control_center():
                     st.write('There must be at least two submissions in order to run a simulation.')
 
             with sim_tabs[1]:
-                saved_api_key = get_instructor_api_key(st.session_state.get('user_id'))
-                use_saved_api_key = st.checkbox(
-                    "Use saved API key",
-                    value=bool(saved_api_key),
-                    key="cc_use_saved_api_key_error",
-                )
-                api_key_key = "cc_api_key_error"
-                if use_saved_api_key and saved_api_key:
-                    if st.session_state.get(api_key_key) != saved_api_key:
-                        st.session_state[api_key_key] = saved_api_key
-                elif st.session_state.get(api_key_key) == saved_api_key:
-                    st.session_state[api_key_key] = ""
+                saved_keys = list_user_api_keys(st.session_state.get('user_id'))
+                key_options = {
+                    key["key_name"]: key["key_id"] for key in saved_keys
+                }
+                if not key_options:
+                    st.info("No API keys saved. Add one in Profile to re-run error chats.")
 
                 st.subheader('Error Chats')
                 error_matchups = get_error_matchups(game_id)
@@ -584,17 +578,24 @@ def render_control_center():
                     st.warning(error_message)
 
                     with st.form(key='cc_error_form'):
-                        api_key = st.text_input('API Key', type="password", key=api_key_key)
-                        save_api_key = st.checkbox("Save API key", value=False, key="cc_save_api_key_error")
+                        selected_key_id = None
+                        if key_options:
+                            selected_label = st.selectbox(
+                                "API Key",
+                                options=list(key_options.keys()),
+                                key="cc_api_key_select_error",
+                            )
+                            selected_key_id = key_options[selected_label]
                         model = st.selectbox('OpenAI Model', ['gpt-4o-mini', 'gpt-4o'], key="cc_error_model")
                         submit_button = st.form_submit_button(label='Run')
 
                     if submit_button:
-                        resolved_api_key = api_key or (saved_api_key if use_saved_api_key else "")
-                        if resolved_api_key and model:
-                            if save_api_key and api_key:
-                                if not upsert_instructor_api_key(st.session_state.get('user_id'), api_key):
-                                    st.error("Failed to save API key. Check API_KEY_ENCRYPTION_KEY.")
+                        resolved_api_key = None
+                        if selected_key_id:
+                            resolved_api_key = get_user_api_key(st.session_state.get('user_id'), selected_key_id)
+                        if not resolved_api_key:
+                            st.error("Please select a saved API key to re-run error chats.")
+                        elif resolved_api_key and model:
                             simulation_params = get_game_simulation_params(game_id)
                             if not simulation_params:
                                 st.error("No simulation parameters found for this game.")

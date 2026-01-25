@@ -38,6 +38,15 @@ class TestRunSimulation:
         page = instructor_page
         game_data = simulation_test_game
 
+        # Add an API key in Profile first (required for simulations)
+        page.get_by_role("link", name="Profile").click()
+        page.wait_for_selector("text=Profile", timeout=30000)
+
+        page.get_by_label("Key name").fill("E2E Key")
+        page.get_by_label("OpenAI API key").fill(openai_api_key)
+        page.get_by_role("button", name="Add API key").click()
+        page.wait_for_selector("text=API key saved successfully!", timeout=30000)
+
         # Navigate to Control Panel (fixture creates data via DB, page is at home)
         page.get_by_role("link", name="Control Panel").click()
         page.wait_for_selector("text=Welcome, Instructor!", timeout=30000)
@@ -70,8 +79,12 @@ class TestRunSimulation:
         page.wait_for_selector("text=API Key", timeout=30000)
 
         # Fill out the simulation form
-        # API Key
-        page.get_by_label("API Key").fill(openai_api_key)
+        # API Key (select saved key)
+        api_key_select = page.locator("[data-testid='stSelectbox']").filter(
+            has_text="API Key"
+        )
+        api_key_select.locator("div[data-baseweb='select']").click()
+        page.get_by_role("option", name="E2E Key").click()
 
         # Model - use gpt-4o-mini for lower cost and faster response
         # The selectbox should default to gpt-4o-mini, but let's ensure

@@ -1431,6 +1431,235 @@ def get_instructor_api_key(user_id):
         print(f"Error in get_instructor_api_key: {e}")
         return None
 
+
+def _ensure_user_api_key_table(cur):
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_api_key (
+            key_id SERIAL PRIMARY KEY,
+            user_id VARCHAR(50) NOT NULL,
+            key_name VARCHAR(100) NOT NULL,
+            encrypted_key TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES user_(user_id) ON DELETE CASCADE,
+            UNIQUE (user_id, key_name)
+        );
+        """
+    )
+
+
+def _maybe_migrate_instructor_key(cur, user_id):
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS instructor_api_key (
+            user_id VARCHAR(50) PRIMARY KEY,
+            encrypted_key TEXT NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES user_(user_id) ON DELETE CASCADE
+        );
+        """
+    )
+    cur.execute(
+        "SELECT encrypted_key FROM instructor_api_key WHERE user_id = %(user_id)s;",
+        {"user_id": user_id},
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+    cur.execute(
+        """
+        INSERT INTO user_api_key (user_id, key_name, encrypted_key, created_at, updated_at)
+        VALUES (%(user_id)s, %(key_name)s, %(encrypted_key)s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ON CONFLICT (user_id, key_name)
+        DO UPDATE SET encrypted_key = EXCLUDED.encrypted_key,
+                      updated_at = CURRENT_TIMESTAMP
+        RETURNING key_id, key_name, updated_at;
+        """,
+        {"user_id": user_id, "key_name": "Imported key", "encrypted_key": row[0]},
+    )
+    return cur.fetchone()
+
+
+def list_user_api_keys(user_id):
+    """List saved API keys (metadata only) for a user."""
+    cipher = _get_api_key_cipher()
+    if not cipher:
+        return []
+    conn = get_connection()
+    if not conn:
+        return []
+    try:
+        with conn.cursor() as cur:
+            _ensure_user_api_key_table(cur)
+            cur.execute(
+                """
+                SELECT key_id, key_name, updated_at
+                FROM user_api_key
+                WHERE user_id = %(user_id)s
+                ORDER BY updated_at DESC;
+                """,
+                {"user_id": user_id},
+            )
+            rows = cur.fetchall()
+            if not rows:
+                migrated = _maybe_migrate_instructor_key(cur, user_id)
+                if migrated:
+                    conn.commit()
+                    rows = [migrated]
+            return [
+                {"key_id": row[0], "key_name": row[1], "updated_at": row[2]}
+                for row in rows
+            ]
+    except Exception as e:
+        print(f"Error in list_user_api_keys: {e}")
+        return []
+
+
+def add_user_api_key(user_id, key_name, api_key):
+    """Add or update a named API key for a user."""
+    cipher = _get_api_key_cipher()
+    if not cipher:
+        return False
+    conn = get_connection()
+    if not conn:
+        return False
+    try:
+        encrypted_key = cipher.encrypt(api_key.encode()).decode()
+        with conn.cursor() as cur:
+            _ensure_user_api_key_table(cur)
+            cur.execute(
+                """
+                INSERT INTO user_api_key (user_id, key_name, encrypted_key, created_at, updated_at)
+                VALUES (%(user_id)s, %(key_name)s, %(encrypted_key)s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ON CONFLICT (user_id, key_name)
+                DO UPDATE SET encrypted_key = EXCLUDED.encrypted_key,
+                              updated_at = CURRENT_TIMESTAMP;
+                """,
+                {"user_id": user_id, "key_name": key_name, "encrypted_key": encrypted_key},
+            )
+            conn.commit()
+            return True
+    except Exception as e:
+        conn.rollback()
+        print(f"Error in add_user_api_key: {e}")
+        return False
+
+
+def update_user_api_key_name(user_id, key_id, new_name):
+    """Rename a saved API key."""
+    conn = get_connection()
+    if not conn:
+        return False
+    try:
+        with conn.cursor() as cur:
+            _ensure_user_api_key_table(cur)
+            cur.execute(
+                """
+                UPDATE user_api_key
+                SET key_name = %(key_name)s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = %(user_id)s AND key_id = %(key_id)s;
+                """,
+                {"user_id": user_id, "key_id": key_id, "key_name": new_name},
+            )
+            conn.commit()
+            return cur.rowcount > 0
+    except Exception as e:
+        conn.rollback()
+        print(f"Error in update_user_api_key_name: {e}")
+        return False
+
+
+def update_user_api_key(user_id, key_id, new_name, api_key):
+    """Update the name and value of a saved API key."""
+    cipher = _get_api_key_cipher()
+    if not cipher:
+        return False
+    conn = get_connection()
+    if not conn:
+        return False
+    try:
+        encrypted_key = cipher.encrypt(api_key.encode()).decode()
+        with conn.cursor() as cur:
+            _ensure_user_api_key_table(cur)
+            cur.execute(
+                """
+                UPDATE user_api_key
+                SET key_name = %(key_name)s,
+                    encrypted_key = %(encrypted_key)s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = %(user_id)s AND key_id = %(key_id)s;
+                """,
+                {
+                    "user_id": user_id,
+                    "key_id": key_id,
+                    "key_name": new_name,
+                    "encrypted_key": encrypted_key,
+                },
+            )
+            conn.commit()
+            return cur.rowcount > 0
+    except Exception as e:
+        conn.rollback()
+        print(f"Error in update_user_api_key: {e}")
+        return False
+
+
+def delete_user_api_key(user_id, key_id):
+    """Delete a saved API key."""
+    conn = get_connection()
+    if not conn:
+        return False
+    try:
+        with conn.cursor() as cur:
+            _ensure_user_api_key_table(cur)
+            cur.execute(
+                """
+                DELETE FROM user_api_key
+                WHERE user_id = %(user_id)s AND key_id = %(key_id)s;
+                """,
+                {"user_id": user_id, "key_id": key_id},
+            )
+            conn.commit()
+            return cur.rowcount > 0
+    except Exception as e:
+        conn.rollback()
+        print(f"Error in delete_user_api_key: {e}")
+        return False
+
+
+def get_user_api_key(user_id, key_id):
+    """Retrieve and decrypt a user's API key."""
+    cipher = _get_api_key_cipher()
+    if not cipher:
+        return None
+    conn = get_connection()
+    if not conn:
+        return None
+    try:
+        with conn.cursor() as cur:
+            _ensure_user_api_key_table(cur)
+            cur.execute(
+                """
+                SELECT encrypted_key
+                FROM user_api_key
+                WHERE user_id = %(user_id)s AND key_id = %(key_id)s;
+                """,
+                {"user_id": user_id, "key_id": key_id},
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+            try:
+                return cipher.decrypt(row[0].encode()).decode()
+            except InvalidToken:
+                print("Failed to decrypt user API key. Invalid encryption key.")
+                return None
+    except Exception as e:
+        print(f"Error in get_user_api_key: {e}")
+        return None
+
 # Function to get user_id by email
 def get_user_id_by_email(email):
     conn = get_connection()

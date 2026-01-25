@@ -3,6 +3,7 @@ DROP TABLE IF EXISTS student_prompt CASCADE;
 DROP TABLE IF EXISTS playground_result CASCADE;
 DROP TABLE IF EXISTS game_simulation_params CASCADE;
 DROP TABLE IF EXISTS instructor_api_key CASCADE;
+DROP TABLE IF EXISTS user_api_key CASCADE;
 DROP TABLE IF EXISTS negotiation_chat CASCADE;
 DROP TABLE IF EXISTS instructor CASCADE;
 DROP TABLE IF EXISTS plays CASCADE;
@@ -42,6 +43,19 @@ CREATE TABLE instructor_api_key (
     encrypted_key TEXT NOT NULL,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY(user_id),
+    FOREIGN KEY(user_id) REFERENCES user_(user_id) ON DELETE CASCADE
+);
+
+-- user_api_key table
+CREATE TABLE user_api_key (
+    key_id SERIAL,
+    user_id VARCHAR(50) NOT NULL,
+    key_name VARCHAR(100) NOT NULL,
+    encrypted_key TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY(key_id),
+    UNIQUE (user_id, key_name),
     FOREIGN KEY(user_id) REFERENCES user_(user_id) ON DELETE CASCADE
 );
 

@@ -4,7 +4,14 @@ import hashlib
 import time
 from modules.database_handler import update_password, get_class_from_user_id, get_group_id_from_user_id
 from modules.database_handler import fetch_games_data, fetch_and_compute_scores_for_year, get_academic_year_from_user_id, fetch_and_compute_scores_for_year_game
-from modules.database_handler import get_instructor_api_key, upsert_instructor_api_key
+from modules.database_handler import (
+    list_user_api_keys,
+    add_user_api_key,
+    update_user_api_key_name,
+    update_user_api_key,
+    get_user_api_key,
+    delete_user_api_key,
+)
 from modules.sidebar import render_sidebar
 
 # Initialize session state for buttons if not set
@@ -13,11 +20,6 @@ if 'password_edit_mode' not in st.session_state:
 
 if 'show_password' not in st.session_state:
     st.session_state['show_password'] = False  # Track password visibility state
-
-if 'show_api_key' not in st.session_state:
-    st.session_state['show_api_key'] = False
-if 'api_key_edit_mode' not in st.session_state:
-    st.session_state['api_key_edit_mode'] = False
 
 render_sidebar()
 
@@ -71,6 +73,127 @@ def render_password_section(email):
                     error = st.error("Please fill in both password fields.")
                     time.sleep(1)
                     error.empty()
+
+
+def _format_key_date(updated_at):
+    if not updated_at:
+        return "unknown"
+    if hasattr(updated_at, "strftime"):
+        return updated_at.strftime("%Y-%m-%d %H:%M")
+    return str(updated_at)
+
+
+def render_api_keys_section(user_id, usage_label):
+    st.markdown(f"<h3 style='font-size: 24px;'>API Keys</h3>", unsafe_allow_html=True)
+    st.caption("Keys are stored encrypted.")
+
+    keys = list_user_api_keys(user_id)
+    if not keys:
+        st.info(f"No API keys saved. Add one below to use {usage_label}.")
+
+    @st.dialog("Add API key")
+    def add_key_dialog():
+        key_name = st.text_input("Key name", max_chars=100, key=f"api_key_name_{user_id}")
+        api_key_input = st.text_input(
+            "OpenAI API key",
+            type="password",
+            key=f"api_key_value_{user_id}",
+        )
+        if st.button("Save API key", key=f"api_key_add_submit_{user_id}"):
+            if not key_name or not api_key_input:
+                st.error("Please enter both a name and an API key.")
+            elif add_user_api_key(user_id, key_name, api_key_input):
+                st.success("API key saved successfully!")
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.error("Failed to save API key. Check API_KEY_ENCRYPTION_KEY.")
+
+    @st.dialog("Edit API key")
+    def edit_key_dialog(selected_key):
+        st.caption(f"Last updated: {_format_key_date(selected_key['updated_at'])}")
+        existing_key = get_user_api_key(user_id, selected_key["key_id"])
+        if existing_key is None:
+            st.error("Unable to load the existing key. Please re-save it.")
+            return
+        new_name = st.text_input(
+            "Key name",
+            value=selected_key["key_name"],
+            max_chars=100,
+            key=f"edit_api_key_name_{selected_key['key_id']}",
+        )
+        api_key_input = st.text_input(
+            "OpenAI API key",
+            value=existing_key,
+            type="password",
+            key=f"edit_api_key_value_{selected_key['key_id']}",
+        )
+        if st.button("Save changes", key=f"api_key_edit_submit_{selected_key['key_id']}"):
+            if not new_name:
+                st.error("Please enter a name.")
+            elif api_key_input != existing_key:
+                if update_user_api_key(user_id, selected_key["key_id"], new_name, api_key_input):
+                    st.success("API key updated.")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error("Failed to update key. Check API_KEY_ENCRYPTION_KEY.")
+            elif new_name != selected_key["key_name"]:
+                if update_user_api_key_name(user_id, selected_key["key_id"], new_name):
+                    st.success("Key name updated.")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error("Failed to update key name.")
+            else:
+                st.info("No changes to save.")
+
+    @st.dialog("Delete API key")
+    def delete_key_dialog(selected_key):
+        st.caption(f"Last updated: {_format_key_date(selected_key['updated_at'])}")
+        st.warning("This will permanently delete the selected key.")
+        confirm_delete = st.checkbox(
+            "I understand this will delete the key.",
+            key=f"delete_api_key_confirm_{selected_key['key_id']}",
+        )
+        if st.button("Delete key", key=f"api_key_delete_submit_{selected_key['key_id']}"):
+            if not confirm_delete:
+                st.error("Please confirm deletion.")
+            elif delete_user_api_key(user_id, selected_key["key_id"]):
+                st.success("Key deleted.")
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.error("Failed to delete key.")
+
+    selected_key = None
+    if keys:
+        options = {key["key_name"]: key for key in keys}
+        selected_label = st.selectbox(
+            "Saved keys",
+            options=list(options.keys()),
+            key=f"api_key_select_{user_id}",
+        )
+        selected_key = options[selected_label]
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if st.button("Add key", key=f"api_key_add_btn_{user_id}"):
+            add_key_dialog()
+    with col2:
+        if st.button(
+            "Edit key",
+            key=f"api_key_edit_btn_{user_id}",
+            disabled=selected_key is None,
+        ):
+            edit_key_dialog(selected_key)
+    with col3:
+        if st.button(
+            "Delete key",
+            key=f"api_key_delete_btn_{user_id}",
+            disabled=selected_key is None,
+        ):
+            delete_key_dialog(selected_key)
 # Check if the user is logged in
 if st.session_state['authenticated']:
 
@@ -90,41 +213,7 @@ if st.session_state['authenticated']:
 
         render_password_section(email)
 
-        st.markdown(f"<h3 style='font-size: 24px;'>API Key</h3>", unsafe_allow_html=True)
-        saved_api_key = get_instructor_api_key(st.session_state.get('user_id'))
-        if st.session_state['show_api_key'] and saved_api_key:
-            st.write(saved_api_key)
-        else:
-            st.text("••••••••" if saved_api_key else "Not defined")
-
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            st.checkbox("Show API key", key="show_api_key")
-        with col2:
-            if st.session_state.get("api_key_edit_mode", False):
-                if st.button("Cancel", key="cancel_api_key"):
-                    st.session_state["api_key_edit_mode"] = False
-                    st.rerun()
-            else:
-                if st.button("Edit API key", key="edit_api_key"):
-                    st.session_state["api_key_edit_mode"] = True
-                    st.rerun()
-
-        if st.session_state.get("api_key_edit_mode", False):
-            with st.form(key="api_key_form"):
-                api_key_input = st.text_input("**Enter new API key**", type="password", key="api_key_input")
-                submit_api_key = st.form_submit_button("Save API key")
-                if submit_api_key:
-                    if api_key_input:
-                        if upsert_instructor_api_key(st.session_state.get('user_id'), api_key_input):
-                            st.success("API key saved successfully!")
-                            st.session_state["api_key_edit_mode"] = False
-                            time.sleep(1)
-                            st.rerun()
-                        else:
-                            st.error("Failed to save API key. Check API_KEY_ENCRYPTION_KEY.")
-                    else:
-                        st.error("Please enter an API key.")
+        render_api_keys_section(user_id, "the Playground and Simulations")
 
     elif st.session_state.instructor == False:
             
@@ -150,6 +239,7 @@ if st.session_state['authenticated']:
             st.write(f"{user_id}")
 
             render_password_section(email)
+            render_api_keys_section(user_id, "the Playground")
 
         if selection == 'Leaderboard':
             st.header("Leaderboard")

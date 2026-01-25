@@ -3,7 +3,7 @@ import re
 import autogen
 from modules.database_handler import get_group_id_from_user_id, get_class_from_user_id, insert_playground_result, get_playground_results
 from modules.database_handler import delete_playground_result, delete_all_playground_results
-from modules.database_handler import get_instructor_api_key, upsert_instructor_api_key
+from modules.database_handler import list_user_api_keys, get_user_api_key
 from modules.negotiations import (
     is_valid_termination,
     compute_deal_scores,
@@ -153,34 +153,33 @@ else:
             starting_message = st.text_input("Starting Message", value="Hello, I'm interested in negotiating with you.")
             num_turns = st.slider("Maximum Turns", min_value=5, max_value=30, value=15)
             model = st.selectbox("Model", options=["gpt-4o-mini", "gpt-4o"], index=0)
-            saved_api_key = get_instructor_api_key(user_id)
-            use_saved_api_key = st.checkbox(
-                "Use saved API key",
-                value=bool(saved_api_key),
-                key="playground_use_saved_api_key",
-            )
-            api_key_key = "playground_api_key"
-            if use_saved_api_key and saved_api_key:
-                if st.session_state.get(api_key_key) != saved_api_key:
-                    st.session_state[api_key_key] = saved_api_key
-            elif st.session_state.get(api_key_key) == saved_api_key:
-                st.session_state[api_key_key] = ""
-            api_key = st.text_input("OpenAI API Key", type="password", key=api_key_key)
-            save_api_key = st.checkbox("Save API key", value=False, key="playground_save_api_key")
+            saved_keys = list_user_api_keys(user_id)
+            key_options = {
+                key["key_name"]: key["key_id"] for key in saved_keys
+            }
+            selected_key_id = None
+            if key_options:
+                selected_label = st.selectbox(
+                    "API Key",
+                    options=list(key_options.keys()),
+                    key="playground_api_key_select",
+                )
+                selected_key_id = key_options[selected_label]
+            else:
+                st.info("No API keys saved. Add one in Profile to run a playground test.")
             save_results = st.checkbox("Save Results", value=True)
 
             submit_button = st.form_submit_button("Run Test Negotiation")
 
         if submit_button:
-            resolved_api_key = api_key or (saved_api_key if use_saved_api_key else "")
+            resolved_api_key = None
+            if selected_key_id:
+                resolved_api_key = get_user_api_key(user_id, selected_key_id)
             if not resolved_api_key:
-                st.error("Please provide an OpenAI API key to run the negotiation")
-            else:
+                st.error("Please select an API key in Profile before running the negotiation.")
+                st.stop()
                 with st.spinner("Running negotiation test..."):
                     try:
-                        if save_api_key and api_key:
-                            if not upsert_instructor_api_key(user_id, api_key):
-                                st.error("Failed to save API key. Check API_KEY_ENCRYPTION_KEY.")
                         negotiation_text, chat_history = run_playground_negotiation(
                             role1_prompt, role2_prompt, role1_name, role2_name,
                             starting_message, num_turns, resolved_api_key, model,
@@ -336,6 +335,6 @@ else:
         #### Technical Notes
 
         - The playground uses the same underlying technology as the official competition
-        - API keys are required for testing but are never stored by the system
+        - API keys must be added in your Profile before running tests
         - Your test results can be saved for future reference
         """)
