@@ -38,7 +38,7 @@ if os.getenv("DEV_AUTO_LOGIN") and not st.session_state["authenticated"]:
     st.session_state["user_id"] = os.getenv("DEV_USER_ID", "dev_user")
     st.session_state["login_email"] = os.getenv("DEV_EMAIL", "dev@example.com")
 
-render_sidebar()
+render_sidebar(current_page="home")
 
 # Neutral landing styles and helpers
 st.markdown(
@@ -165,7 +165,7 @@ if not st.session_state["authenticated"]:
             if valid_email(set_password_email):
                 result = set_password(set_password_email)
                 if result is True:
-                    st.success("Set password link has been sent to your email! Check spam if you don't see it.")
+                    st.success("Password link sent. Check spam if needed.")
                 elif result is False:
                     st.error("Failed to send email. Please try again later or contact support.")
                 else:  # result is None - user not found
@@ -195,7 +195,12 @@ if not st.session_state["authenticated"]:
 
             # Input fields for new password and confirmation
             with st.form("set_new_password_form", clear_on_submit=False):
-                password = st.text_input("Enter New Password", type="password", key="new_pw")
+                password = st.text_input(
+                    "Enter New Password",
+                    type="password",
+                    key="new_pw",
+                    help="Min 8 chars, uppercase, lowercase, digit, special char (!@#$%^&*...)",
+                )
                 confirm_password = st.text_input("Confirm your New Password", type="password", key="confirm_pw")
                 set_new_password_submitted = st.form_submit_button("Set Password", type="primary")
 
@@ -215,7 +220,7 @@ if not st.session_state["authenticated"]:
                             # Hash and update password if strong
                             hashed_password = hashlib.sha256(password.encode()).hexdigest()
                             if update_password(st.session_state["set_password_email"], hashed_password):
-                                st.success("Password successfully set!")
+                                st.success("Password set.")
                                 time.sleep(1)
                                 st.query_params.clear()  # Clear query params (CHANGED)
                                 # Reset flags and rerun to go back to login state

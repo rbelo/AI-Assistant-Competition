@@ -28,7 +28,7 @@ if "password_edit_mode" not in st.session_state:
 if "show_password" not in st.session_state:
     st.session_state["show_password"] = False  # Track password visibility state
 
-render_sidebar()
+render_sidebar(current_page="profile")
 
 
 def render_password_section(email):
@@ -49,7 +49,12 @@ def render_password_section(email):
 
     if st.session_state["password_edit_mode"]:
         with st.form(key="password_form"):
-            new_password = st.text_input("**Enter new password**", type="password", key="new_password_input")
+            new_password = st.text_input(
+                "**Enter new password**",
+                type="password",
+                key="new_password_input",
+                help="Min 8 chars, uppercase, lowercase, digit, special char (!@#$%^&*...)",
+            )
             confirm_password = st.text_input("**Confirm new password**", type="password", key="confirm_password_input")
             update_password_btn = st.form_submit_button("Update Password")
 
@@ -67,7 +72,7 @@ def render_password_section(email):
                             hashed_password = hashlib.sha256(new_password.encode()).hexdigest()
 
                             if update_password(email, hashed_password):
-                                st.success("Password updated successfully!")
+                                st.success("Password updated.")
                                 st.session_state["login_password"] = new_password
                                 st.session_state["password_edit_mode"] = False
                                 time.sleep(1)
@@ -96,10 +101,14 @@ def _format_key_date(updated_at):
 def render_api_keys_section(user_id, usage_label):
     st.markdown("<h3 style='font-size: 24px;'>API Keys</h3>", unsafe_allow_html=True)
     st.caption("Keys are stored encrypted.")
+    st.info(
+        "API keys power your AI agents in negotiations. "
+        "Get one free at [OpenAI](https://platform.openai.com/api-keys)."
+    )
 
     keys = list_user_api_keys(user_id)
     if not keys:
-        st.info(f"No API keys saved. Add one below to use {usage_label}.")
+        st.warning(f"No API keys saved. Add one below to use {usage_label}.")
 
     @st.dialog("Add API key")
     def add_key_dialog():
@@ -113,7 +122,7 @@ def render_api_keys_section(user_id, usage_label):
             if not key_name or not api_key_input:
                 st.error("Please enter both a name and an API key.")
             elif add_user_api_key(user_id, key_name, api_key_input):
-                st.success("API key saved successfully!")
+                st.success("API key saved.")
                 time.sleep(1)
                 st.rerun()
             else:

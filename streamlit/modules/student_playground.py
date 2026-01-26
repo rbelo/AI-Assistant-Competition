@@ -212,7 +212,7 @@ def display_student_playground():
                     )
 
                     # Display results
-                    st.success("Test negotiation completed!")
+                    st.success("Test negotiation completed.")
                     st.subheader("Negotiation Results")
                     st.text_area("Negotiation Transcript", negotiation_text, height=400)
 
@@ -222,7 +222,7 @@ def display_student_playground():
                             user_id, class_, group_id, role1_name, role2_name, negotiation_text, model=model
                         )
                         if result_id:
-                            st.success(f"Results saved successfully! Reference ID: {result_id}")
+                            st.success("Results saved.")
                         else:
                             st.error("Failed to save results.")
 

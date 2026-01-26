@@ -27,7 +27,7 @@ import streamlit as st
 # Set page configuration
 st.set_page_config(page_title="AI Assistant Playground", page_icon="🧪")
 
-render_sidebar()
+render_sidebar(current_page="playground")
 
 NEGOTIATION_TERMINATION_MESSAGE = "Pleasure doing business with you"
 SUMMARY_TERMINATION_MESSAGE = "The value agreed was"
@@ -286,7 +286,7 @@ else:
                         )
 
                     # Display results
-                    st.success("Test negotiation completed!")
+                    st.success("Test negotiation completed.")
                     st.subheader("Negotiation Results")
                     render_chat_summary(
                         summary_text,
@@ -317,7 +317,7 @@ else:
                             model=model,
                         )
                         if result_id:
-                            st.success(f"Results saved successfully! Reference ID: {result_id}")
+                            st.success("Results saved.")
                         else:
                             st.error("Failed to save results.")
                 except Exception as e:
@@ -385,7 +385,10 @@ else:
                         transcript_key=f"playground_test_transcript_{test_result['id']}",
                     )
         else:
-            st.info("You don't have any previous playground tests. Create a new test to see results here.")
+            st.info(
+                "You don't have any previous playground tests. "
+                "Create a new test in the 'Create Test' tab to experiment with prompts and see results here."
+            )
 
     with tab3:
         st.header("Playground Help")

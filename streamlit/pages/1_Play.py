@@ -30,7 +30,7 @@ if "game_started" not in st.session_state:
 elif not isinstance(st.session_state.game_started, dict):
     st.session_state.game_started = {}
 
-render_sidebar()
+render_sidebar(current_page="play")
 
 # -------------------------------------------------------------------------------------------------------- #
 
@@ -148,7 +148,7 @@ if st.session_state["authenticated"]:
 
                     if play_now_btn:
                         if selected_game["password"] == password_input:
-                            st.success("Correct Password.")
+                            st.success("Password verified.")
                             st.session_state.not_show_game_password_form.append(selected_game)
                             st.rerun()
                         else:
@@ -185,8 +185,10 @@ if st.session_state["authenticated"]:
                 if submit_button:
                     prompts = text_area_1 + "\n\n" + "#_;:)" + "\n\n" + text_area_2
                     insert_student_prompt(game_id, CLASS, GROUP_ID, prompts, USER_ID)
-                    st.success("✓ Submission Successful! Your prompts have been saved.")
-                    st.info("💡 You can adjust your prompts anytime before the submission deadline shown above.")
+                    st.success("Prompts submitted.")
+                    st.info("You can adjust your prompts anytime before the submission deadline shown above.")
+                    st.info("Want to test prompt variations? Try the Playground to experiment before submitting.")
+                    st.page_link("pages/3_Playground.py", label="Go to Playground", icon=":material/science:")
         else:
             if submission:
                 with st.expander("**View Prompts**"):
@@ -252,7 +254,11 @@ if st.session_state["authenticated"]:
         else:
             st.write("Negotiation Chats are not available yet.")
     else:
-        st.write("There are no games available.")
+        st.info(
+            "No games available yet. Your instructor will create games for you to join. "
+            "In the meantime, you can test prompt ideas in the Playground."
+        )
+        st.page_link("pages/3_Playground.py", label="Go to Playground", icon=":material/science:")
 
 # If the user is not authenticated yet
 else:

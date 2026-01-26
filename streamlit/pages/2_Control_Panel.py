@@ -68,7 +68,7 @@ if "cc_pending_selected_year" not in st.session_state:
 if "cc_pending_selected_game" not in st.session_state:
     st.session_state.cc_pending_selected_game = None
 
-render_sidebar()
+render_sidebar(current_page="control_panel")
 
 
 def build_year_class_options(academic_year_class_combinations):
@@ -92,7 +92,7 @@ def render_control_center():
     st.title("Control Panel")
     st.write("Welcome, Instructor!")
     if st.session_state.cc_game_created:
-        st.success("Game created successfully!")
+        st.success("Game created.")
         st.session_state.cc_game_created = False
 
     tabs = st.tabs(["Game Overview", "Create Game", "Student Management"])
@@ -344,7 +344,7 @@ def render_control_center():
                         st.error("An error occurred. Please try again.")
 
                     if update_success:
-                        st.success("Game updated successfully!")
+                        st.success("Game updated.")
                         st.rerun()
                 else:
                     warning = st.warning("Please fill out all fields before submitting.")
@@ -771,7 +771,7 @@ def render_control_center():
                 )
                 if access_disabled:
                     update_access_to_chats(0, selected_game["game_id"])
-                    success = st.success("Student Access successfully disabled.")
+                    success = st.success("Student access disabled.")
                     time.sleep(1)
                     success.empty()
                     st.rerun()
@@ -782,7 +782,7 @@ def render_control_center():
                     )
                     if access_enabled:
                         update_access_to_chats(1, selected_game["game_id"])
-                        success = st.success("Student Access successfully enabled.")
+                        success = st.success("Student access enabled.")
                         time.sleep(1)
                         success.empty()
                         st.rerun()
@@ -1239,7 +1239,7 @@ def render_control_center():
                         st.error("Please fill in all fields.")
                     else:
                         if insert_student_data(user_id, email, "Not defined", group_id, academic_year, class_):
-                            st.success("Student added successfully!")
+                            st.success("Student added.")
                         else:
                             st.error("Failed to add student. Please try again.")
                         st.session_state.cc_add_student = False
@@ -1257,7 +1257,7 @@ def render_control_center():
                             user_id = st.session_state.cc_selected_student[0]["User ID"]
 
                         if remove_student(user_id):
-                            st.success("Student removed successfully!")
+                            st.success("Student removed.")
                             st.session_state.cc_students = st.session_state.cc_students[
                                 st.session_state.cc_students["User ID"] != user_id
                             ]
