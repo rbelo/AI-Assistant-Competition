@@ -1273,21 +1273,13 @@ def render_control_center():
 
 st.set_page_config("Control Panel")
 
-# Record page entry
-if "authenticated" in st.session_state and st.session_state["authenticated"]:
-
 # Check if the user is authenticated
-if st.session_state["authenticated"]:
-
-    if st.session_state["instructor"]:
+if st.session_state.get("authenticated"):
+    if st.session_state.get("instructor"):
         render_control_center()
     else:
         st.title("Control Panel")
         st.write("Page accessible only to Instructors.")
-
-    # Record page exit
-    if "authenticated" in st.session_state and st.session_state["authenticated"]:
-
 else:
     st.title("Control Panel")
     st.write("Please Login first. (Page accessible only to Instructors)")

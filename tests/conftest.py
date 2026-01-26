@@ -6,7 +6,6 @@ so that unit tests can run without requiring secrets.toml or external services.
 """
 
 import sys
-import types
 from io import StringIO
 from unittest.mock import MagicMock, patch
 
@@ -279,7 +278,6 @@ def csv_file():
         return file
 
     return _create_csv
-
 
 
 # =============================================================================
