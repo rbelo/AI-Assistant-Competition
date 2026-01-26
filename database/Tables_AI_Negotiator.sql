@@ -168,55 +168,6 @@ CREATE TABLE student_prompt (
     FOREIGN KEY (game_id) REFERENCES game(game_id) ON DELETE CASCADE
 );
 
--- metrics tables
-CREATE TABLE page_visit (
-    id SERIAL PRIMARY KEY,
-    user_id VARCHAR(255),
-    page_name VARCHAR(255),
-    entry_timestamp TIMESTAMP,
-    exit_timestamp TIMESTAMP,
-    duration_seconds FLOAT
-);
-
-CREATE TABLE game_interaction (
-    id SERIAL PRIMARY KEY,
-    user_id VARCHAR(255),
-    game_id INTEGER,
-    game_type VARCHAR(50),
-    completion_time FLOAT,
-    score FLOAT,
-    timestamp TIMESTAMP
-);
-
-CREATE TABLE prompt_metrics (
-    id SERIAL PRIMARY KEY,
-    user_id VARCHAR(255),
-    prompt_text TEXT,
-    word_count INTEGER,
-    character_count INTEGER,
-    response_time FLOAT,
-    timestamp TIMESTAMP
-);
-
-CREATE TABLE conversation_metrics (
-    id SERIAL PRIMARY KEY,
-    user_id VARCHAR(255),
-    conversation_id VARCHAR(255),
-    total_exchanges INTEGER,
-    conversation_duration FLOAT,
-    timestamp TIMESTAMP
-);
-
-CREATE TABLE deal_metrics (
-    id SERIAL PRIMARY KEY,
-    user_id VARCHAR(255),
-    game_id INTEGER,
-    negotiation_rounds INTEGER,
-    deal_value FLOAT,
-    deal_success BOOLEAN,
-    timestamp TIMESTAMP
-);
-
 -- game_simulation_params table - stores simulation parameters for a game
 CREATE TABLE game_simulation_params (
     game_id INT NOT NULL,

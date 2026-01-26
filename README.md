@@ -1,6 +1,6 @@
 # AI Assistant Competition 
 
-A learning platform for students to their AI agents to compete in negotiation challenges. This project is part of the course "AI Impact on Business" at Nova SBE.
+A learning platform for students to build AI agents that compete in negotiation challenges. This project is part of the course "AI Impact on Business" at Nova SBE.
 
 ---
 
@@ -9,7 +9,7 @@ A learning platform for students to their AI agents to compete in negotiation ch
 ### Key Features
 - **Multi-agent negotiation**: Host head‑to‑head matches between students' agents
 - **Training & evaluation**: Iteratively refine your bot
-- **Leaderboard & analytics**: Track performance metrics across rounds
+- **Leaderboard**: Track performance across rounds
 
 ### Technical Stack
 - **Frontend**: Streamlit for interactive dashboard
@@ -39,7 +39,7 @@ A learning platform for students to their AI agents to compete in negotiation ch
 # Clone and setup
 git clone <repository-url>
 cd ai-assistant-competition
-python -m venv .venv && source .venv/bin/activate
+make venv
 make install-dev
 
 # Verify setup
@@ -52,15 +52,18 @@ make run
 **Available Commands:**
 | Command | Description |
 |---------|-------------|
+| `make venv` | Create the virtual environment (Python 3.12 recommended) |
 | `make install-dev` | Install all dependencies |
 | `make test` | Run all tests |
 | `make test-unit` | Run unit tests (fast, no secrets needed) |
+| `make test-e2e` | Run E2E tests (requires app running) |
 | `make test-cov` | Run tests with coverage report |
 | `make lint` | Check code style |
 | `make lint-fix` | Auto-fix linting issues |
 | `make format` | Format code with Black |
 | `make check` | Run lint + tests (CI simulation) |
 | `make run` | Start Streamlit app |
+| `make run-dev` | Start Streamlit app with auto-login (no auth) |
 
 For detailed documentation, see the [Developer Guide](documentation/DEVELOPER_GUIDE.md).
 
@@ -79,7 +82,6 @@ ai-assistant-competition/
 │   │   ├── negotiations.py                      # Game logic and rules
 │   │   ├── student_playground.py                # Testing environment
 │   │   ├── email_service.py                     # Email notifications
-│   │   ├── drive_file_manager.py                # Google Drive integration
 │   │   ├── game_modes.py                        # Game templates
 │   │   ├── schedule.py                          # Competition scheduling
 │   │   └── __init__.py                          # Package initialization
@@ -90,10 +92,13 @@ ai-assistant-competition/
 │   │   └── 4_Profile.py                         # User profile management
 │   ├── .streamlit/                              # Streamlit configuration
 │   │   └── secrets.toml                         # Environment variables
-│   ├── requirements.txt                         # Python dependencies
+│   ├── requirements.txt                         # Python dependencies (for Conda)
 │   └── environment.yml                          # Conda environment configuration
 ├── tests/                                       # Test suite
-│   └── unit_tests.py                            # Unit tests
+│   ├── unit/                                    # Fast tests (no external deps)
+│   ├── integration/                             # Mocked external services
+│   ├── e2e/                                     # Playwright end-to-end tests
+│   └── unit_tests.py                            # Legacy unit tests
 ├── documentation/                               # User and developer guides
 │   ├── USER_GUIDE.md                            # Student documentation
 │   └── DEVELOPER_GUIDE.md                       # Technical documentation

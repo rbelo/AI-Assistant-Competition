@@ -34,7 +34,6 @@ def email_service():
     mock_secrets = MockSecrets(
         {
             "database": {"url": "postgresql://test:test@localhost:5432/test_db"},
-            "drive": {"folder_id": "test_folder_id"},
             "mail": {"email": "test@example.com", "api_key": "test_api_key"},
             "app": {"link": "https://test-app.streamlit.app"},
         }

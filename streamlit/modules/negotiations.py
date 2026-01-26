@@ -1,15 +1,6 @@
 import re
-import time
 
 import autogen
-from modules.metrics_handler import (
-    record_conversation_metrics,
-    record_conversation_processing,
-    record_deal_analysis,
-    record_deal_metrics,
-    record_prompt_metrics,
-    record_prompt_submission,
-)
 
 from .database_handler import (
     get_error_matchups,
@@ -283,43 +274,6 @@ def create_chat(
                 )
             except Exception as e:
                 print(f"Warning: Failed to store negotiation chat: {e}")
-
-    # Parse the result value
-    # Record metrics (with safe defaults for optional values)
-    start_time = time.time()
-    try:
-        record_prompt_metrics(
-            user_id=user.name if user else None,
-            prompt=starting_message,
-            response=negotiation,
-            processing_time=time.time() - start_time,
-        )
-        record_prompt_submission(user_id=user.name if user else None)
-
-        # Record conversation metrics
-        record_conversation_metrics(
-            user_id=user.name if user else None,
-            conversation_id=f"{game_id}_{round_num}" if game_id and round_num else None,
-            duration=time.time() - start_time,
-            messages_count=len(chat.chat_history) if chat else 0,
-        )
-        record_conversation_processing(user_id=user.name if user else None, processing_time=time.time() - start_time)
-
-        # Record deal metrics if a deal was made
-        if deal_value > 0:
-            team_name = minimizer_team["Name"] if minimizer_team else "unknown"
-            record_deal_metrics(
-                user_id=user.name if user else None,
-                deal_id=f"{game_id}_{round_num}_{team_name}",
-                value=deal_value,
-                duration=time.time() - start_time,
-            )
-            record_deal_analysis(
-                user_id=user.name if user else None, deal_id=f"{game_id}_{round_num}_{team_name}", analysis=summary_text
-            )
-    except Exception as e:
-        # Don't fail the whole negotiation if metrics recording fails
-        print(f"Warning: Failed to record metrics: {e}")
 
     return deal_value
 

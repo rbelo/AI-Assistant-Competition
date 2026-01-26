@@ -4,9 +4,11 @@
 # This project uses 'uv' for fast dependency management.
 # All commands work without manually activating the virtual environment.
 
-.PHONY: help install install-dev test test-unit test-e2e test-integration test-cov lint lint-fix format check run run-dev stop db-up db-down db-psql reset-local-db reset-remote-db clean venv
+.PHONY: help install install-dev test test-unit test-e2e test-integration test-cov lint lint-fix format check run run-dev stop db-up db-down db-psql reset-local-db reset-remote-db test-remote-db-connection clean venv
 
 BREW_PSQL ?= $(shell brew --prefix postgresql@15 2>/dev/null)/bin/psql
+SECRETS_TOML ?= streamlit/.streamlit/secrets.toml
+SECRETS_DB_URL := $(shell awk -F' *= *' '/^\[database\]/{section=1; next} /^\[/{section=0} section && $$1=="url" {gsub(/"/,"",$$2); print $$2; exit}' $(SECRETS_TOML) 2>/dev/null)
 
 # Default target
 help:
@@ -40,7 +42,8 @@ help:
 	@echo "  make db-down       Stop local Postgres"
 	@echo "  make db-psql       Open psql shell for the local database"
 	@echo "  make reset-local-db  Reset schema and seed data in local Postgres"
-	@echo "  make reset-remote-db Reset schema and seed data in remote Postgres (requires REMOTE_DATABASE_URL)"
+	@echo "  make reset-remote-db Reset schema and seed data in remote Postgres (uses REMOTE_DATABASE_URL or secrets.toml)"
+	@echo "  make test-remote-db-connection  Test remote DB connection (uses REMOTE_DATABASE_URL or secrets.toml)"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  make clean         Remove cache and build artifacts"
@@ -130,11 +133,16 @@ reset-local-db:
 	@echo "Database reset complete."
 
 reset-remote-db:
-	@test -n "$(REMOTE_DATABASE_URL)" || (echo "REMOTE_DATABASE_URL is required" && exit 1)
-	@psql "$(REMOTE_DATABASE_URL)" -v ON_ERROR_STOP=1 -c "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO CURRENT_USER; GRANT ALL ON SCHEMA public TO public;"
-	@psql "$(REMOTE_DATABASE_URL)" -v ON_ERROR_STOP=1 -f database/Tables_AI_Negotiator.sql
-	@psql "$(REMOTE_DATABASE_URL)" -v ON_ERROR_STOP=1 -f database/Populate_Tables_AI_Negotiator.sql
+	@test -n "$(REMOTE_DATABASE_URL)" || test -n "$(SECRETS_DB_URL)" || (echo "REMOTE_DATABASE_URL is required (or set database.url in $(SECRETS_TOML))" && exit 1)
+	@psql "$(if $(REMOTE_DATABASE_URL),$(REMOTE_DATABASE_URL),$(SECRETS_DB_URL))" -v ON_ERROR_STOP=1 -c "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO CURRENT_USER; GRANT ALL ON SCHEMA public TO public;"
+	@psql "$(if $(REMOTE_DATABASE_URL),$(REMOTE_DATABASE_URL),$(SECRETS_DB_URL))" -v ON_ERROR_STOP=1 -f database/Tables_AI_Negotiator.sql
+	@psql "$(if $(REMOTE_DATABASE_URL),$(REMOTE_DATABASE_URL),$(SECRETS_DB_URL))" -v ON_ERROR_STOP=1 -f database/Populate_Tables_AI_Negotiator.sql
 	@echo "Database reset complete."
+
+test-remote-db-connection:
+	@test -n "$(REMOTE_DATABASE_URL)" || test -n "$(SECRETS_DB_URL)" || (echo "REMOTE_DATABASE_URL is required (or set database.url in $(SECRETS_TOML))" && exit 1)
+	@psql "$(if $(REMOTE_DATABASE_URL),$(REMOTE_DATABASE_URL),$(SECRETS_DB_URL))" -v ON_ERROR_STOP=1 -c "SELECT 1;" >/dev/null
+	@echo "Remote database connection OK."
 
 # Maintenance
 clean:

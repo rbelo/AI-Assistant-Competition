@@ -14,7 +14,6 @@ from modules.database_handler import (
     get_user_id_of_student,
     insert_student_prompt,
 )
-from modules.metrics_handler import record_game_end, record_game_interaction, record_game_start
 from modules.sidebar import render_sidebar
 
 import streamlit as st
@@ -108,7 +107,6 @@ if st.session_state["authenticated"]:
         if selected_game["status"] == "Active":
             if str(game_id) not in st.session_state.game_started:
                 st.session_state.game_started[str(game_id)] = True
-                record_game_start(st.session_state.get("user_id", "anonymous"), game_id)
 
         with st.expander("**Explanation**", expanded=True):
             game_explanation = selected_game.get("explanation")
@@ -189,14 +187,6 @@ if st.session_state["authenticated"]:
                     insert_student_prompt(game_id, CLASS, GROUP_ID, prompts, USER_ID)
                     st.success("✓ Submission Successful! Your prompts have been saved.")
                     st.info("💡 You can adjust your prompts anytime before the submission deadline shown above.")
-
-                    record_game_interaction(
-                        user_id=st.session_state.get("user_id", "anonymous"),
-                        game_type="zero-sum",
-                        game_id=str(game_id),
-                        completion_time=0,
-                        score=0,
-                    )
         else:
             if submission:
                 with st.expander("**View Prompts**"):
@@ -213,7 +203,6 @@ if st.session_state["authenticated"]:
                     st.session_state.game_started = {}
 
                 if str(game_id) in st.session_state.game_started:
-                    record_game_end(st.session_state.get("user_id", "anonymous"), game_id)
                     del st.session_state.game_started[str(game_id)]
 
                 files_names = []

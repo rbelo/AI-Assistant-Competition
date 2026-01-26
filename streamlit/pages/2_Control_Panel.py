@@ -34,7 +34,6 @@ from modules.database_handler import (
     update_num_rounds_game,
     upsert_game_simulation_params,
 )
-from modules.metrics_handler import record_page_entry, record_page_exit
 from modules.negotiation_display import render_chat_summary
 from modules.negotiations import (
     build_llm_config,
@@ -1276,7 +1275,6 @@ st.set_page_config("Control Panel")
 
 # Record page entry
 if "authenticated" in st.session_state and st.session_state["authenticated"]:
-    record_page_entry(st.session_state.get("user_id", "anonymous"), "Control Panel")
 
 # Check if the user is authenticated
 if st.session_state["authenticated"]:
@@ -1289,7 +1287,6 @@ if st.session_state["authenticated"]:
 
     # Record page exit
     if "authenticated" in st.session_state and st.session_state["authenticated"]:
-        record_page_exit("Control Panel")
 
 else:
     st.title("Control Panel")

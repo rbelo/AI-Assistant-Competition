@@ -58,15 +58,6 @@ def mock_secrets():
             "database": {
                 "url": "postgresql://test:test@localhost:5432/test_db",
             },
-            "drive": {
-                "type": "service_account",
-                "project_id": "test-project",
-                "private_key_id": "test-key-id",
-                "private_key": "-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----\n",
-                "client_email": "test@test-project.iam.gserviceaccount.com",
-                "client_id": "123456789",
-                "folder_id": "test_folder_id",
-            },
             "mail": {
                 "email": "test@example.com",
                 "api_key": "test_api_key",
@@ -192,63 +183,6 @@ def mock_psycopg2(mock_db_connection):
 
 
 # =============================================================================
-# Google Drive Mocking
-# =============================================================================
-
-
-@pytest.fixture
-def mock_drive_service():
-    """
-    Provides mock Google Drive service and file operations.
-
-    Usage:
-        def test_drive_operation(mock_drive_service):
-            get_text, write_text, delete_file, service = mock_drive_service
-            get_text.return_value = "file content"
-            # Test your drive operation
-    """
-    mock_service = MagicMock()
-    mock_files = MagicMock()
-    mock_service.files.return_value = mock_files
-
-    mock_get_text = MagicMock(return_value="Mock file content")
-    mock_write_text = MagicMock(return_value=True)
-    mock_delete_file = MagicMock(return_value=True)
-
-    return mock_get_text, mock_write_text, mock_delete_file, mock_service
-
-
-@pytest.fixture
-def mock_google_auth():
-    """
-    Patches Google authentication modules.
-
-    Usage:
-        def test_something(mock_google_auth):
-            # Google auth is now mocked
-    """
-    # Create mock credentials
-    mock_creds = MagicMock()
-    mock_creds.valid = True
-
-    mock_service_account = MagicMock()
-    mock_service_account.Credentials.from_service_account_info.return_value = mock_creds
-
-    with patch.dict(
-        sys.modules,
-        {
-            "google": MagicMock(),
-            "google.oauth2": MagicMock(),
-            "google.oauth2.service_account": mock_service_account,
-            "googleapiclient": MagicMock(),
-            "googleapiclient.discovery": MagicMock(),
-            "googleapiclient.http": MagicMock(),
-        },
-    ):
-        yield mock_creds
-
-
-# =============================================================================
 # Test Data Factories
 # =============================================================================
 
@@ -346,38 +280,6 @@ def csv_file():
 
     return _create_csv
 
-
-@pytest.fixture
-def stub_google_modules():
-    """
-    Stubs Google API modules to allow importing drive_file_manager without dependencies.
-
-    This is useful when you need to test modules that import drive_file_manager
-    but don't want to require the actual Google libraries.
-    """
-    # Stub Google API modules
-    sys.modules.setdefault("googleapiclient", types.ModuleType("googleapiclient"))
-
-    discovery = types.ModuleType("googleapiclient.discovery")
-    discovery.build = lambda *args, **kwargs: MagicMock()
-    sys.modules["googleapiclient.discovery"] = discovery
-
-    http = types.ModuleType("googleapiclient.http")
-    http.MediaIoBaseUpload = MagicMock
-    http.MediaIoBaseDownload = MagicMock
-    sys.modules["googleapiclient.http"] = http
-
-    sys.modules.setdefault("google", types.ModuleType("google"))
-    sys.modules["google.oauth2"] = types.ModuleType("google.oauth2")
-
-    service_account = types.ModuleType("google.oauth2.service_account")
-    service_account.Credentials = MagicMock()
-    service_account.Credentials.from_service_account_info = MagicMock(return_value=MagicMock())
-    sys.modules["google.oauth2.service_account"] = service_account
-
-    yield
-
-    # Note: We don't clean up sys.modules as other tests may need these stubs
 
 
 # =============================================================================
