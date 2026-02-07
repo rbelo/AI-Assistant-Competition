@@ -1,6 +1,7 @@
 import pandas as pd
-import streamlit as st
 from st_aggrid import AgGrid, ColumnsAutoSizeMode, GridOptionsBuilder, GridUpdateMode
+
+import streamlit as st
 
 from ..database_handler import get_students_from_db, insert_student_data, remove_student
 from ..student_utils import process_student_csv

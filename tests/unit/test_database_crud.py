@@ -292,8 +292,17 @@ class TestGetGameById:
     def test_returns_game_dict(self, db):
         dh, conn, cursor = db
         cursor.fetchone.return_value = (
-            True, "admin", "TestGame", 3, ["Buyer", "Seller"],
-            "2024", "A", "pass", "2024-01-01", "2024-06-01", "Explanation"
+            True,
+            "admin",
+            "TestGame",
+            3,
+            ["Buyer", "Seller"],
+            "2024",
+            "A",
+            "pass",
+            "2024-01-01",
+            "2024-06-01",
+            "Explanation",
         )
         with patch.object(dh, "get_connection", return_value=conn):
             result = dh.get_game_by_id(1)
@@ -369,8 +378,7 @@ class TestStoreGameInDb:
         cursor.fetchone.return_value = (1,)  # mode_id exists
         with patch.object(dh, "get_connection", return_value=conn):
             result = dh.store_game_in_db(
-                1, True, "admin", "Game", 3, ["B", "S"],
-                "2024", "A", "pw", "ts", "dl", "exp", "zero_sum"
+                1, True, "admin", "Game", 3, ["B", "S"], "2024", "A", "pw", "ts", "dl", "exp", "zero_sum"
             )
         assert result is True
         conn.commit.assert_called_once()
@@ -384,8 +392,7 @@ class TestStoreGameInDb:
         cursor.fetchone.side_effect = [None, (42,)]
         with patch.object(dh, "get_connection", return_value=conn):
             result = dh.store_game_in_db(
-                1, True, "admin", "Game", 3, ["B", "S"],
-                "2024", "A", "pw", "ts", "dl", "exp", "new_mode"
+                1, True, "admin", "Game", 3, ["B", "S"], "2024", "A", "pw", "ts", "dl", "exp", "new_mode"
             )
         assert result is True
         # Three executes: mode lookup + mode insert + game insert
@@ -400,10 +407,7 @@ class TestUpdateGameInDb:
     def test_updates_and_commits(self, db):
         dh, conn, cursor = db
         with patch.object(dh, "get_connection", return_value=conn):
-            result = dh.update_game_in_db(
-                1, "admin", "Game", 3, ["B", "S"],
-                "2024", "A", "pw", "ts", "dl", "exp"
-            )
+            result = dh.update_game_in_db(1, "admin", "Game", 3, ["B", "S"], "2024", "A", "pw", "ts", "dl", "exp")
         assert result is True
         conn.commit.assert_called_once()
         q = cursor.execute.call_args_list[0][0][0]
@@ -547,9 +551,7 @@ class TestGameSimulationParams:
     def test_upsert(self, db):
         dh, conn, cursor = db
         with patch.object(dh, "get_connection", return_value=conn):
-            result = dh.upsert_game_simulation_params(
-                1, "gpt-4o", "same", "Hello", 10, "Deal!", "Summarize", "DEAL:"
-            )
+            result = dh.upsert_game_simulation_params(1, "gpt-4o", "same", "Hello", 10, "Deal!", "Summarize", "DEAL:")
         assert result is True
         conn.commit.assert_called()
         # CREATE TABLE IF NOT EXISTS + INSERT/UPSERT

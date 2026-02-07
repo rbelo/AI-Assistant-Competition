@@ -1,6 +1,7 @@
 import time
 
 import pandas as pd
+
 import streamlit as st
 
 from ..database_handler import (
@@ -24,7 +25,9 @@ def render_results_tab(selected_game: dict) -> None:
     access_state = "Enabled" if selected_game["available"] else "Disabled"
     st.write(f"Student Access: {access_state}")
     if selected_game["available"]:
-        access_disabled = st.button("Disable Student Access to Negotiation Chats and Leaderboard", key="cc_disable_access")
+        access_disabled = st.button(
+            "Disable Student Access to Negotiation Chats and Leaderboard", key="cc_disable_access"
+        )
         if access_disabled:
             update_access_to_chats(0, selected_game["game_id"])
             success = st.success("Student access disabled.")
@@ -234,9 +237,7 @@ def render_results_tab(selected_game: dict) -> None:
     class_ = selected_group.split("Class ")[1].split(" - ")[0]
     group_id = int(selected_group.split("Group ")[1])
     group_matchups = [
-        m
-        for m in matchups
-        if (m[1] == class_ and m[2] == group_id) or (m[3] == class_ and m[4] == group_id)
+        m for m in matchups if (m[1] == class_ and m[2] == group_id) or (m[3] == class_ and m[4] == group_id)
     ]
     simulation_params = get_game_simulation_params(game_id)
     summary_termination_message = (

@@ -24,11 +24,11 @@ def build_diagnostics_summary(run_diagnostics, processed_matches):
         "attempts_failed": run_diagnostics["attempts_failed"],
         "retries_used": max(run_diagnostics["attempts_total"] - processed_matches, 0),
         "summary_calls": run_diagnostics["summary_calls"],
-        "avg_turns_per_successful_chat": round(
-            run_diagnostics["total_turns"] / run_diagnostics["successful_chats"], 2
-        )
-        if run_diagnostics["successful_chats"]
-        else 0.0,
+        "avg_turns_per_successful_chat": (
+            round(run_diagnostics["total_turns"] / run_diagnostics["successful_chats"], 2)
+            if run_diagnostics["successful_chats"]
+            else 0.0
+        ),
     }
 
 

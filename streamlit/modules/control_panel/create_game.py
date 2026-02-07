@@ -22,9 +22,7 @@ def render_create_game_tab(logger):
 
     academic_year_class_combinations = get_academic_year_class_combinations()
     if not academic_year_class_combinations:
-        st.error(
-            "No academic year and class combinations found. Please make sure there are students in the database."
-        )
+        st.error("No academic year and class combinations found. Please make sure there are students in the database.")
         return
 
     combination_options = build_year_class_options(academic_year_class_combinations)

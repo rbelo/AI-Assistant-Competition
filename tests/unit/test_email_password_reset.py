@@ -97,9 +97,7 @@ class TestSendSetPasswordEmail:
             mock_smtp.return_value.__enter__ = MagicMock(return_value=mock_server)
             mock_smtp.return_value.__exit__ = MagicMock(return_value=False)
 
-            result = email_mod.send_set_password_email(
-                "user@example.com", "https://app.com?set_password=token123"
-            )
+            result = email_mod.send_set_password_email("user@example.com", "https://app.com?set_password=token123")
 
         assert result is True
         mock_server.starttls.assert_called_once()
@@ -112,9 +110,7 @@ class TestSendSetPasswordEmail:
     @pytest.mark.unit
     def test_returns_false_on_smtp_error(self, email_mod):
         with patch("modules.email_service.smtplib.SMTP") as mock_smtp:
-            mock_smtp.return_value.__enter__ = MagicMock(
-                side_effect=Exception("SMTP connection failed")
-            )
+            mock_smtp.return_value.__enter__ = MagicMock(side_effect=Exception("SMTP connection failed"))
             mock_smtp.return_value.__exit__ = MagicMock(return_value=False)
 
             result = email_mod.send_set_password_email("user@example.com", "https://link")
@@ -129,12 +125,8 @@ class TestSetPassword:
     @pytest.mark.unit
     def test_sends_email_when_user_exists(self, email_mod):
         with patch.object(email_mod, "exists_user", return_value=True):
-            with patch.object(
-                email_mod, "generate_set_password_link", return_value="https://link"
-            ) as mock_gen:
-                with patch.object(
-                    email_mod, "send_set_password_email", return_value=True
-                ) as mock_send:
+            with patch.object(email_mod, "generate_set_password_link", return_value="https://link") as mock_gen:
+                with patch.object(email_mod, "send_set_password_email", return_value=True) as mock_send:
                     result = email_mod.set_password("user@example.com")
 
         assert result is True
@@ -150,11 +142,7 @@ class TestSetPassword:
     @pytest.mark.unit
     def test_returns_false_when_email_fails(self, email_mod):
         with patch.object(email_mod, "exists_user", return_value=True):
-            with patch.object(
-                email_mod, "generate_set_password_link", return_value="https://link"
-            ):
-                with patch.object(
-                    email_mod, "send_set_password_email", return_value=False
-                ):
+            with patch.object(email_mod, "generate_set_password_link", return_value="https://link"):
+                with patch.object(email_mod, "send_set_password_email", return_value=False):
                     result = email_mod.set_password("user@example.com")
         assert result is False

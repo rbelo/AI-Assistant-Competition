@@ -1,7 +1,7 @@
-import streamlit as st
-
 from modules.control_panel.state import initialize_control_panel_state
 from modules.control_panel.view import render_control_center
+
+import streamlit as st
 
 st.set_page_config("Control Panel")
 initialize_control_panel_state()

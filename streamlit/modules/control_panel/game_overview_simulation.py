@@ -204,7 +204,6 @@ def render_simulation_tab(selected_game: dict) -> None:
                     progress_bar = st.empty()
                     progress_caption = st.empty()
                     total_matches = calculate_planned_chats(len(teams), rounds_to_run)
-                    completed_matches = 0
 
                     progress_header.markdown("### Simulation Progress")
                     progress_bar = st.progress(0)
