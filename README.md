@@ -80,6 +80,11 @@ For detailed documentation, see the [Developer Guide](documentation/DEVELOPER_GU
 
 ## Project Structure
 
+### Repository Root Conventions
+- Automated tests live under `tests/` (`unit`, `integration`, `e2e`).
+- Test documentation/analysis lives under `documentation/testing/`.
+- Root-level files should stay focused on project metadata/configuration and high-level docs.
+
 ```
 ai-assistant-competition/
 ├── streamlit/                                   # Main application code
@@ -123,15 +128,12 @@ ai-assistant-competition/
 │   └── conftest.py                              # Shared test fixtures
 ├── documentation/                               # User and developer guides
 │   ├── USER_GUIDE.md                            # Student documentation
-│   └── DEVELOPER_GUIDE.md                       # Technical documentation
-├── E-R_Model/                                   # Database entity-relationship models
-│   ├── E-R Model.png                            # Entity-Relationship diagram
-│   └── E-R Model.drawio                         # Draw.io source file
+│   ├── DEVELOPER_GUIDE.md                       # Technical documentation
+│   └── testing/                                 # Testing notes and analysis
 ├── database/                                    # Database files
 │   ├── Tables_AI_Negotiator.sql                 # Database schema
 │   ├── Populate_Tables_AI_Negotiator.sql        # Sample data
 │   └── students_ai_negotiator.csv               # Student data
-├── .devcontainer/                               # Development container configuration
 ├── .gitignore                                   # Git ignore rules
 └── README.md                                    # Project overview
 ```

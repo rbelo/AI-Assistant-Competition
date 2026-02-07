@@ -21,11 +21,10 @@ This guide provides detailed information for developers and contributors to the 
 
 ## 1. Prerequisites
 
-- Python 3.11 (required, as specified in devcontainer)
+- Python 3.11+
 - PostgreSQL 13+
 - Node.js & npm
 - Git
-- Docker (optional, but recommended for consistent development environment)
 
 ### 1.1 Key Dependencies
 The project requires several key Python packages:
@@ -51,7 +50,6 @@ The project provides multiple ways to set up your development environment:
 
 - Using `environment.yml` for Conda environments
 - Using `requirements.txt` for pip installations
-- Using `.devcontainer` for VS Code development containers
 
 Choose the method that best suits your workflow. All necessary dependencies and configurations are included in these files.
 
