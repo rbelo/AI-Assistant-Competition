@@ -64,7 +64,6 @@ def run_playground_negotiation(
     role2_prompt,
     role1_name,
     role2_name,
-    starting_message,
     num_turns,
     api_key,
     model="gpt-5-mini",
@@ -92,7 +91,7 @@ def run_playground_negotiation(
     responder = role1_agent if initiator is role2_agent else role2_agent
 
     termination_fn = lambda msg, history: negotiation_termination_message in msg["content"]
-    chat = engine.run_bilateral(initiator, responder, starting_message, num_turns, termination_fn)
+    chat = engine.run_bilateral(initiator, responder, num_turns, termination_fn)
 
     # Process chat history for display
     negotiation_text = ""
@@ -184,7 +183,6 @@ with tab1:
             index=0,
             key="playground_conversation_starter",
         )
-        starting_message = st.text_input("Starting Message", value="Hello, I'm interested in negotiating with you.")
         num_turns = st.slider("Maximum Turns", min_value=5, max_value=30, value=15)
         st.subheader("Run Configuration")
         model = st.selectbox(
@@ -226,7 +224,6 @@ with tab1:
                     role2_prompt,
                     role1_name,
                     role2_name,
-                    starting_message,
                     num_turns,
                     resolved_api_key,
                     model,

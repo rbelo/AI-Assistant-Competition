@@ -64,9 +64,6 @@ def render_simulation_tab(selected_game: dict) -> None:
         model_options = MODEL_OPTIONS
         model_explanations = MODEL_EXPLANATIONS
         default_model = simulation_params["model"] if simulation_params else "gpt-5-mini"
-        default_starting_message = (
-            simulation_params["starting_message"] if simulation_params else "Hello, shall we start the negotiation?"
-        )
         default_num_turns = simulation_params["num_turns"] if simulation_params else 15
         default_negotiation_termination = (
             simulation_params["negotiation_termination_message"]
@@ -131,9 +128,6 @@ def render_simulation_tab(selected_game: dict) -> None:
                     index=default_order_index,
                     key="cc_conversation_starter",
                 )
-                starting_message = st.text_input(
-                    "Starting Message", value=default_starting_message, key="cc_starting_message"
-                )
                 num_turns = st.number_input(
                     "Maximum Number of Turns",
                     step=1,
@@ -169,7 +163,6 @@ def render_simulation_tab(selected_game: dict) -> None:
                     and model
                     and opponents_per_team
                     and conversation_starter
-                    and starting_message
                     and num_turns
                     and negotiation_termination_message
                     and summary_prompt
@@ -184,7 +177,7 @@ def render_simulation_tab(selected_game: dict) -> None:
                         game_id=game_id,
                         model=model,
                         conversation_order=initiator_role,
-                        starting_message=starting_message,
+                        starting_message="",
                         num_turns=num_turns,
                         negotiation_termination_message=negotiation_termination_message,
                         summary_prompt=summary_prompt,
@@ -255,7 +248,6 @@ def render_simulation_tab(selected_game: dict) -> None:
                                 teams,
                                 values,
                                 rounds_to_run,
-                                starting_message,
                                 num_turns,
                                 negotiation_termination_message,
                                 summary_prompt,
@@ -387,7 +379,6 @@ def render_simulation_tab(selected_game: dict) -> None:
                                 name_roles,
                                 simulation_params["conversation_order"],
                                 values,
-                                simulation_params["starting_message"],
                                 simulation_params["num_turns"],
                                 simulation_params["negotiation_termination_message"],
                                 simulation_params["summary_prompt"],

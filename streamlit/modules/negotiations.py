@@ -74,7 +74,6 @@ def create_chat(
     minimizer_team,
     maximizer_team,
     initiator_role_index,
-    starting_message,
     num_turns,
     summary_prompt,
     round_num,
@@ -109,7 +108,7 @@ def create_chat(
     termination_fn = _make_termination_fn(negotiation_termination_message)
 
     chat_start = time.perf_counter()
-    chat = engine.run_bilateral(agent1, agent2, starting_message, num_turns, termination_fn)
+    chat = engine.run_bilateral(agent1, agent2, num_turns, termination_fn)
     chat_elapsed = time.perf_counter() - chat_start
 
     negotiation = ""
@@ -180,7 +179,6 @@ def create_chats(
     teams,
     values,
     num_rounds,
-    starting_message,
     num_turns,
     negotiation_termination_message,
     summary_prompt,
@@ -260,16 +258,12 @@ def create_chats(
                         round_, team1, team2, initiator_role_name, responder_role_name, "running", attempt + 1
                     )
 
-                    c = " " if attempt % 2 == 0 else ""
-                    starting_message += c
-
                     minimizer_team, maximizer_team = get_minimizer_maximizer(team1, team2, initiator_role_index)
                     deal = create_chat(
                         game_id,
                         minimizer_team,
                         maximizer_team,
                         initiator_role_index,
-                        starting_message,
                         num_turns,
                         summary_prompt,
                         round_,
@@ -346,16 +340,12 @@ def create_chats(
                         round_, team2, team1, initiator_role_name, responder_role_name, "running", attempt + 1
                     )
 
-                    c = " " if attempt % 2 == 0 else ""
-                    starting_message += c
-
                     minimizer_team, maximizer_team = get_minimizer_maximizer(team2, team1, initiator_role_index)
                     deal = create_chat(
                         game_id,
                         minimizer_team,
                         maximizer_team,
                         initiator_role_index,
-                        starting_message,
                         num_turns,
                         summary_prompt,
                         round_,
@@ -454,7 +444,6 @@ def create_all_error_chats(
     name_roles,
     conversation_order,
     values,
-    starting_message,
     num_turns,
     negotiation_termination_message,
     summary_prompt,
@@ -494,15 +483,11 @@ def create_all_error_chats(
 
             for attempt in range(max_retries):
                 try:
-                    c = " " if attempt % 2 == 0 else ""
-                    starting_message += c
-
                     deal = create_chat(
                         game_id,
                         minimizer_team,
                         maximizer_team,
                         initiator_role_index,
-                        starting_message,
                         num_turns,
                         summary_prompt,
                         match[0],
@@ -542,15 +527,11 @@ def create_all_error_chats(
 
             for attempt in range(max_retries):
                 try:
-                    c = " " if attempt % 2 == 0 else ""
-                    starting_message += c
-
                     deal = create_chat(
                         game_id,
                         minimizer_team,
                         maximizer_team,
                         initiator_role_index,
-                        starting_message,
                         num_turns,
                         summary_prompt,
                         match[0],

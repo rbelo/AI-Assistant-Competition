@@ -73,17 +73,16 @@ class ConversationEngine:
     # Public API
     # ------------------------------------------------------------------
 
-    def run_bilateral(self, agent1, agent2, opening_message, max_turns, termination_fn=None):
+    def run_bilateral(self, agent1, agent2, max_turns, termination_fn=None):
         """Two-agent back-and-forth (e.g. zero-sum negotiation).
 
-        *agent1* sends *opening_message* (no LLM call).  Then agents
-        alternate for up to *max_turns* exchanges (each agent speaks once
-        per exchange).
+        *agent1* opens the conversation by generating its first message via
+        an LLM call.  Then agents alternate for up to *max_turns* exchanges
+        (each agent speaks once per exchange).
 
         Args:
-            agent1: Initiating agent (sends the opening message).
+            agent1: Initiating agent (generates the opening message).
             agent2: Responding agent.
-            opening_message: First message, attributed to *agent1*.
             max_turns: Maximum number of full exchanges.
             termination_fn: ``fn(msg_dict, history) -> bool``.  Called
                 after every generated message.  Return *True* to stop.
@@ -92,7 +91,11 @@ class ConversationEngine:
             A :class:`ChatResult` whose ``chat_history`` is a list of
             ``{"name": str, "content": str}`` dicts.
         """
-        history = [{"name": agent1.name, "content": opening_message}]
+        # Agent 1 generates its own opening message
+        opening = self._call_llm(agent1.system_message, [])
+        history = [{"name": agent1.name, "content": opening}]
+        if termination_fn and termination_fn({"content": opening}, history):
+            return ChatResult(history)
 
         for _ in range(max_turns):
             # Agent 2 responds
@@ -109,18 +112,17 @@ class ConversationEngine:
 
         return ChatResult(history)
 
-    def run_multilateral(self, agents, opening_agent, opening_message, max_turns,
+    def run_multilateral(self, agents, opening_agent, max_turns,
                          speaker_order_fn=None, termination_fn=None):
         """N-agent conversation (e.g. multi-party negotiation).
 
-        *opening_agent* sends *opening_message*, then speakers are chosen by
-        *speaker_order_fn* (defaults to round-robin starting from the next
-        agent after the opener).
+        *opening_agent* generates the first message via an LLM call, then
+        speakers are chosen by *speaker_order_fn* (defaults to round-robin
+        starting from the next agent after the opener).
 
         Args:
             agents: All participating agents (including the opener).
-            opening_agent: Agent that sends the first message.
-            opening_message: First message text.
+            opening_agent: Agent that generates the first message.
             max_turns: Maximum number of generated messages after the opener.
             speaker_order_fn: ``fn(agents, history) -> iterator of GameAgent``.
                 Defaults to round-robin.
@@ -129,7 +131,10 @@ class ConversationEngine:
         Returns:
             A :class:`ChatResult`.
         """
-        history = [{"name": opening_agent.name, "content": opening_message}]
+        opening = self._call_llm(opening_agent.system_message, [])
+        history = [{"name": opening_agent.name, "content": opening}]
+        if termination_fn and termination_fn({"content": opening}, history):
+            return ChatResult(history)
 
         if speaker_order_fn is not None:
             speaker_iter = speaker_order_fn(agents, history)
