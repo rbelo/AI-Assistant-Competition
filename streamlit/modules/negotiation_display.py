@@ -35,7 +35,7 @@ def render_chat_summary(
         col1.metric("Agreed Value", f"{deal_value:.2f}")
         col2.metric(f"{role1_label} Score", f"{score_role1 * 100:.1f}")
         col3.metric(f"{role2_label} Score", f"{score_role2 * 100:.1f}")
-        st.caption("Scores assume Role 1 is the minimizer and Role 2 is the maximizer.")
+        st.caption(f"Scores assume {role1_label} is the minimizer and {role2_label} is the maximizer.")
 
     with st.expander(transcript_label, expanded=transcript_expanded):
         if transcript:

@@ -334,7 +334,7 @@ if st.session_state["authenticated"]:
 
                         st.dataframe(
                             leaderboard_df.style.apply(color_coding, axis=1).format(precision=2),
-                            use_container_width=True,
+                            width="stretch",
                             column_config={
                                 "Class": st.column_config.TextColumn(width="small"),
                                 "Group ID": st.column_config.NumberColumn(width="small"),
@@ -414,7 +414,7 @@ if st.session_state["authenticated"]:
 
                             st.dataframe(
                                 leaderboard_df.style.apply(color_coding, axis=1).format(precision=2),
-                                use_container_width=True,
+                                width="stretch",
                                 column_config={
                                     "Class": st.column_config.TextColumn(width="small"),
                                     "Group ID": st.column_config.NumberColumn(width="small"),

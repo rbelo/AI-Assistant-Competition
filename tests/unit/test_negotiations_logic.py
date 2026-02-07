@@ -18,11 +18,14 @@ STREAMLIT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../
 if STREAMLIT_PATH not in sys.path:
     sys.path.insert(0, STREAMLIT_PATH)
 
+import modules.negotiations as neg  # noqa: E402
 from modules.negotiations import (  # noqa: E402
     _build_summary_context,
     _extract_summary_text,
     build_llm_config,
     clean_agent_message,
+    create_chat,
+    create_chats,
     extract_summary_from_transcript,
     get_maximizer_reservation,
     get_minimizer_maximizer,
@@ -575,3 +578,141 @@ class TestIsInvalidApiKeyError:
     @pytest.mark.unit
     def test_case_insensitive(self):
         assert is_invalid_api_key_error(Exception("INVALID API KEY")) is True
+
+
+# ---------------------------------------------------------------------------
+# timing instrumentation
+# ---------------------------------------------------------------------------
+class TestNegotiationTimingInstrumentation:
+    @pytest.mark.unit
+    def test_create_chat_populates_timing_buckets(self, monkeypatch):
+        # Arrange fake agents/chat
+        chat = MagicMock()
+        chat.chat_history = [
+            {"name": "BuyerAgent", "content": "BuyerAgent: offer 10"},
+            {"name": "SellerAgent", "content": "SellerAgent: accept"},
+        ]
+
+        buyer_agent = MagicMock()
+        buyer_agent.name = "BuyerAgent"
+        buyer_agent.system_message = "buyer prompt"
+        buyer_agent.initiate_chat.return_value = chat
+
+        seller_agent = MagicMock()
+        seller_agent.name = "SellerAgent"
+        seller_agent.system_message = "seller prompt"
+
+        minimizer_team = {"Name": "ClassT_Group1", "Agent 1": buyer_agent, "Agent 2": seller_agent}
+        maximizer_team = {"Name": "ClassT_Group2", "Agent 1": seller_agent, "Agent 2": buyer_agent}
+
+        monkeypatch.setattr(neg, "get_game_by_id", lambda _gid: {"explanation": "test explanation"})
+        monkeypatch.setattr(neg, "evaluate_deal_summary", lambda *args, **kwargs: ("The value agreed was 10", 10))
+        insert_mock = MagicMock()
+        monkeypatch.setattr(neg, "insert_negotiation_chat", insert_mock)
+        monkeypatch.setattr(
+            neg,
+            "time",
+            MagicMock(
+                perf_counter=MagicMock(
+                    # chat=12s, summary=8s, db=1s
+                    side_effect=[0.0, 12.0, 12.0, 20.0, 20.0, 21.0]
+                )
+            ),
+        )
+
+        timing_totals = {"chat_seconds": 0.0, "summary_seconds": 0.0, "db_seconds": 0.0, "chats_measured": 0}
+
+        # Act
+        deal = create_chat(
+            game_id=1,
+            minimizer_team=minimizer_team,
+            maximizer_team=maximizer_team,
+            initiator_role_index=1,
+            starting_message="start",
+            num_turns=5,
+            summary_prompt="summarize",
+            round_num=1,
+            user=MagicMock(),
+            summary_agent=MagicMock(),
+            summary_termination_message="The value agreed was",
+            timing_totals=timing_totals,
+        )
+
+        # Assert
+        assert deal == 10
+        assert timing_totals["chat_seconds"] == 12.0
+        assert timing_totals["summary_seconds"] == 8.0
+        assert timing_totals["db_seconds"] == 1.0
+        assert timing_totals["chats_measured"] == 1
+        assert insert_mock.call_count == 1
+
+    @pytest.mark.unit
+    def test_create_chats_reports_timing_and_progress(self, monkeypatch):
+        # Arrange minimal deterministic 2-team schedule => 2 chats total
+        monkeypatch.setattr(neg, "berger_schedule", lambda _teams, _rounds: [[("ClassT_Group1", "ClassT_Group2")]])
+        monkeypatch.setattr(neg, "insert_round_data", lambda *args, **kwargs: True)
+        monkeypatch.setattr(neg, "update_round_data", lambda *args, **kwargs: True)
+        monkeypatch.setattr(neg, "build_summary_agents", lambda *args, **kwargs: (MagicMock(), MagicMock()))
+
+        team1 = {
+            "Name": "ClassT_Group1",
+            "Value 1": 20,
+            "Value 2": 10,
+            "Agent 1": MagicMock(name="a11"),
+            "Agent 2": MagicMock(name="a12"),
+        }
+        team2 = {
+            "Name": "ClassT_Group2",
+            "Value 1": 19,
+            "Value 2": 9,
+            "Agent 1": MagicMock(name="a21"),
+            "Agent 2": MagicMock(name="a22"),
+        }
+        monkeypatch.setattr(neg, "create_agents", lambda *args, **kwargs: [team1, team2])
+
+        def fake_create_chat(*args, **kwargs):
+            timing = kwargs["timing_totals"]
+            timing["chat_seconds"] += 5.0
+            timing["summary_seconds"] += 2.0
+            timing["db_seconds"] += 1.0
+            timing["chats_measured"] += 1
+            return 12.0
+
+        monkeypatch.setattr(neg, "create_chat", fake_create_chat)
+
+        progress_events = []
+
+        def progress_cb(**kwargs):
+            progress_events.append(kwargs)
+
+        # Act
+        result = create_chats(
+            game_id=1,
+            config_list={},
+            name_roles=["Buyer", "Seller"],
+            conversation_order="Buyer",
+            teams=[["T", 1], ["T", 2]],
+            values=[{"class": "T", "group_id": 1}, {"class": "T", "group_id": 2}],
+            num_rounds=1,
+            starting_message="hello",
+            num_turns=5,
+            negotiation_termination_message="Pleasure doing business with you",
+            summary_prompt="summarize",
+            summary_termination_message="The value agreed was",
+            progress_callback=progress_cb,
+        )
+
+        # Assert
+        assert result["status"] == "success"
+        assert result["total_matches"] == 2
+        assert result["processed_matches"] == 2
+        assert result["completed_matches"] == 2
+        assert result["timing"]["chats_measured"] == 2
+        assert result["timing"]["chat_seconds_avg"] == 5.0
+        assert result["timing"]["summary_seconds_avg"] == 2.0
+        assert result["timing"]["db_seconds_avg"] == 1.0
+
+        phases = [event["phase"] for event in progress_events]
+        assert "running" in phases
+        assert phases.count("completed") == 2
+        assert all(event["total_matches"] == 2 for event in progress_events)

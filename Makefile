@@ -4,7 +4,7 @@
 # This project uses 'uv' for fast dependency management.
 # All commands work without manually activating the virtual environment.
 
-.PHONY: help install install-dev test test-unit test-e2e test-integration test-cov lint lint-fix format check run run-dev stop db-up db-down db-psql reset-local-db reset-production-db test-production-db-connection reset-staging-db test-staging-db-connection sync-production-to-staging reset-remote-db test-remote-db-connection clean venv
+.PHONY: help install install-dev test test-unit test-e2e test-integration test-cov lint lint-fix format check run run-dev run-dev-admin run-dev-student stop db-up db-down db-psql reset-local-db reset-production-db test-production-db-connection reset-staging-db test-staging-db-connection sync-production-to-staging reset-remote-db test-remote-db-connection clean venv
 
 # Auto-load local environment variables (gitignored) when present.
 # Command-line vars still take precedence (e.g., ALLOW_PRODUCTION_RESET=1 make ...).
@@ -51,7 +51,9 @@ help:
 	@echo ""
 	@echo "Application:"
 	@echo "  make run           Start the Streamlit application"
-	@echo "  make run-dev       Start app with auto-login (no authentication)"
+	@echo "  make run-dev       Start app with auto-login as admin (alias of run-dev-admin)"
+	@echo "  make run-dev-admin Start app with auto-login as admin"
+	@echo "  make run-dev-student Start app with auto-login as seeded student"
 	@echo "  make stop          Stop the Streamlit app started by make run/run-dev"
 	@echo ""
 	@echo "Database:"
@@ -127,9 +129,16 @@ check: lint test-unit
 run:
 	cd streamlit && uv run streamlit run 0_Home.py
 
-# Development mode with auto-login (no authentication required)
+# Development mode with auto-login as admin instructor
 run-dev:
+	@$(MAKE) run-dev-admin
+
+run-dev-admin:
 	cd streamlit && DEV_AUTO_LOGIN=1 DEV_IS_INSTRUCTOR=true DEV_USER_ID=admin DEV_EMAIL=admin@rodrigobelo.com DATABASE_URL=postgresql:///ai_assistant_competition uv run streamlit run 0_Home.py
+
+# Development mode with auto-login as seeded student from local test data
+run-dev-student:
+	cd streamlit && DEV_AUTO_LOGIN=1 DEV_IS_INSTRUCTOR=false DEV_USER_ID=stud001 DEV_EMAIL=student1@example.com DATABASE_URL=postgresql:///ai_assistant_competition uv run streamlit run 0_Home.py
 
 # Stop Streamlit app launched via make run/run-dev
 stop:

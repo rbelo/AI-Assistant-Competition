@@ -224,40 +224,46 @@ def render_control_center():
                         value=name_roles_2_stored,
                     )
 
-                st.write("")
+                st.markdown("#### Reservation Values")
+                st.caption(
+                    "Each group's reservation values are sampled from these ranges for the two roles."
+                )
                 col1, col2, col3, col4 = st.columns(4)
                 with col1:
                     param1_edit = st.number_input(
-                        "Minimum Minimizer",
+                        "Lower Bound (Minimizer)",
                         min_value=0,
                         step=1,
                         value=int(params_stored[0]),
                         key=f"cc_param1_edit_{game_key_suffix}",
+                        help="For the minimizer role, reservation value means the highest acceptable deal value. This sets the minimum of that sampled threshold.",
                     )
                 with col2:
                     param2_edit = st.number_input(
-                        "Maximum Minimizer",
+                        "Upper Bound (Minimizer)",
                         min_value=0,
                         step=1,
                         value=int(params_stored[1]),
                         key=f"cc_param2_edit_{game_key_suffix}",
+                        help="For the minimizer role, reservation value means the highest acceptable deal value. This sets the maximum of that sampled threshold.",
                     )
                 with col3:
                     param3_edit = st.number_input(
-                        "Minimum Maximizer",
+                        "Lower Bound (Maximizer)",
                         min_value=0,
                         step=1,
                         value=int(params_stored[2]),
                         key=f"cc_param3_edit_{game_key_suffix}",
+                        help="For the maximizer role, reservation value means the lowest acceptable deal value. This sets the minimum of that sampled threshold.",
                     )
                 with col4:
                     param4_edit = st.number_input(
-                        "Maximum Maximizer",
+                        "Upper Bound (Maximizer)",
                         min_value=0,
                         step=1,
                         value=int(params_stored[3]),
                         key=f"cc_param4_edit_{game_key_suffix}",
-                        help="All values are expressed in the unit mentioned in description.",
+                        help="For the maximizer role, reservation value means the lowest acceptable deal value. This sets the maximum of that sampled threshold.",
                     )
 
                 selected_combination_edit = st.selectbox(
@@ -404,7 +410,7 @@ def render_control_center():
                         for row in submissions
                     ]
                 )
-                st.dataframe(submissions_df, use_container_width=True)
+                st.dataframe(submissions_df, width="stretch")
 
                 with st.expander("View Prompts"):
                     for row in submissions:
@@ -597,7 +603,7 @@ def render_control_center():
                             progress_placeholder = st.empty()
                             progress_bar = st.empty()
                             progress_caption = st.empty()
-                            matches_per_round = (len(teams) + 1) // 2
+                            matches_per_round = len(teams) // 2
                             total_matches = rounds_to_run * matches_per_round * 2
                             completed_matches = 0
 
@@ -607,16 +613,42 @@ def render_control_center():
                                 f"Planned chats: {total_matches} | Rounds: {rounds_to_run} | Teams: {len(teams)}"
                             )
 
-                            def update_progress(round_num, team1, team2, initiator_role_name, responder_role_name):
-                                nonlocal completed_matches
-                                completed_matches += 1
+                            def update_progress(
+                                round_num,
+                                team1,
+                                team2,
+                                role1_name,
+                                role2_name,
+                                completed_matches,
+                                total_matches,
+                                phase,
+                                attempt=None,
+                                elapsed_seconds=None,
+                            ):
+                                visual_completed = completed_matches
+                                if phase in {"running", "retrying"} and total_matches:
+                                    # Show partial progress while a blocking chat call is in flight.
+                                    visual_completed = min(completed_matches + 0.5, total_matches)
+
                                 if total_matches:
-                                    progress_bar.progress(min(completed_matches / total_matches, 1.0))
+                                    progress_bar.progress(min(visual_completed / total_matches, 1.0))
+
+                                phase_label = phase.replace("_", " ").title()
+                                attempt_text = f" (attempt {attempt})" if attempt else ""
+                                elapsed_text = f" | elapsed {elapsed_seconds:.1f}s" if elapsed_seconds else ""
+
                                 progress_placeholder.info(
-                                    f"Round {round_num}: {team1['Name']} ({initiator_role_name}) "
-                                    f"vs {team2['Name']} ({responder_role_name})"
+                                    f"Round {round_num}: {team1['Name']} ({role1_name}) vs {team2['Name']} ({role2_name}) "
+                                    f"- {phase_label}{attempt_text}{elapsed_text}"
                                 )
-                                progress_caption.caption(f"Completed {completed_matches} of {total_matches} chats")
+                                if phase in {"running", "retrying"}:
+                                    current_chat = min(completed_matches + 1, total_matches)
+                                    progress_caption.caption(
+                                        f"Processing chat {current_chat} of {total_matches} "
+                                        f"(completed {completed_matches})"
+                                    )
+                                else:
+                                    progress_caption.caption(f"Processed {completed_matches} of {total_matches} chats")
 
                             with st.spinner("Running negotiations..."):
                                 try:
@@ -653,16 +685,43 @@ def render_control_center():
                             progress_caption.empty()
                             progress_header.empty()
                             status_placeholder.empty()
-                            status_placeholder.empty()
                             if isinstance(outcome_simulation, dict) and outcome_simulation.get("status") == "success":
                                 completed = outcome_simulation.get("completed_matches", 0)
+                                processed = outcome_simulation.get("processed_matches", completed)
                                 total = outcome_simulation.get("total_matches", 0)
                                 st.success(
                                     f"All negotiations were completed successfully! "
-                                    f"Completed {completed} of {total} negotiations."
+                                    f"Successful: {completed} | Processed: {processed} of {total} chats."
                                 )
+                            elif isinstance(outcome_simulation, dict):
+                                completed = outcome_simulation.get("completed_matches", 0)
+                                processed = outcome_simulation.get("processed_matches", 0)
+                                total = outcome_simulation.get("total_matches", 0)
+                                st.warning(
+                                    f"Simulation completed with errors. Successful: {completed} | "
+                                    f"Processed: {processed} of {total} chats."
+                                )
+                                st.warning(outcome_simulation.get("message", "Some negotiations were unsuccessful."))
                             else:
-                                st.warning(outcome_simulation)
+                                st.warning(str(outcome_simulation))
+
+                            if isinstance(outcome_simulation, dict):
+                                timing = outcome_simulation.get("timing", {})
+                                st.caption(
+                                    "Timing diagnostics (seconds per chat avg): "
+                                    f"Negotiation={timing.get('chat_seconds_avg', 0):.2f}, "
+                                    f"Summary={timing.get('summary_seconds_avg', 0):.2f}, "
+                                    f"DB={timing.get('db_seconds_avg', 0):.2f}"
+                                )
+                                diagnostics = outcome_simulation.get("diagnostics", {})
+                                st.caption(
+                                    "Run diagnostics: "
+                                    f"attempts={diagnostics.get('attempts_total', 0)}, "
+                                    f"retries={diagnostics.get('retries_used', 0)}, "
+                                    f"failed_attempts={diagnostics.get('attempts_failed', 0)}, "
+                                    f"summary_calls={diagnostics.get('summary_calls', 0)}, "
+                                    f"avg_turns/successful_chat={diagnostics.get('avg_turns_per_successful_chat', 0):.2f}"
+                                )
                         else:
                             warning = st.warning("Please fill out all fields before submitting.")
                             time.sleep(1)
@@ -961,7 +1020,7 @@ def render_control_center():
 
                     st.dataframe(
                         leaderboard_df.style.format(precision=2),
-                        use_container_width=True,
+                        width="stretch",
                         column_config={
                             "Class": st.column_config.TextColumn(width="small"),
                             "Group ID": st.column_config.NumberColumn(width="small"),
@@ -1031,28 +1090,46 @@ def render_control_center():
             with col2:
                 name_roles_2 = st.text_input("Name of Maximizer Role", value="Seller", key="cc_name_roles_2")
 
-            st.write("")
+            st.markdown("#### Reservation Values")
+            st.caption(
+                "Each group's reservation values are sampled from these ranges for the two roles."
+            )
             col1, col2, col3, col4 = st.columns(4)
             with col1:
                 param1 = st.number_input(
-                    "Lower Bound for Minimizer Reservation Value", min_value=0, step=1, value=16, key="cc_param1"
+                    "Lower Bound (Minimizer)",
+                    min_value=0,
+                    step=1,
+                    value=16,
+                    key="cc_param1",
+                    help="For the minimizer role, reservation value means the highest acceptable deal value. This sets the minimum of that sampled threshold.",
                 )
             with col2:
                 param2 = st.number_input(
-                    "Upper Bound for Minimizer Reservation Value", min_value=0, step=1, value=25, key="cc_param2"
+                    "Upper Bound (Minimizer)",
+                    min_value=0,
+                    step=1,
+                    value=25,
+                    key="cc_param2",
+                    help="For the minimizer role, reservation value means the highest acceptable deal value. This sets the maximum of that sampled threshold.",
                 )
             with col3:
                 param3 = st.number_input(
-                    "Lower Bound for Maximizer Reservation Value", min_value=0, step=1, value=7, key="cc_param3"
+                    "Lower Bound (Maximizer)",
+                    min_value=0,
+                    step=1,
+                    value=7,
+                    key="cc_param3",
+                    help="For the maximizer role, reservation value means the lowest acceptable deal value. This sets the minimum of that sampled threshold.",
                 )
             with col4:
                 param4 = st.number_input(
-                    "Upper Bound for Maximizer Reservation Value",
+                    "Upper Bound (Maximizer)",
                     min_value=0,
                     step=1,
                     value=15,
                     key="cc_param4",
-                    help="All values are expressed in the unit mentioned in description.",
+                    help="For the maximizer role, reservation value means the lowest acceptable deal value. This sets the maximum of that sampled threshold.",
                 )
 
             selected_combination = st.selectbox(

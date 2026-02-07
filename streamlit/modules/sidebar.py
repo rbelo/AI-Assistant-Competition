@@ -18,36 +18,36 @@ def render_sidebar(current_page=None):
         if st.session_state.get("authenticated"):
             if st.button(
                 "Home",
-                use_container_width=True,
+                width="stretch",
                 type="primary" if current_page == "home" else "secondary",
             ):
                 st.switch_page("0_Home.py")
             if st.session_state.get("instructor"):
                 if st.button(
                     "Control Panel",
-                    use_container_width=True,
+                    width="stretch",
                     type="primary" if current_page == "control_panel" else "secondary",
                 ):
                     st.switch_page("pages/2_Control_Panel.py")
             if st.button(
                 "Play",
-                use_container_width=True,
+                width="stretch",
                 type="primary" if current_page == "play" else "secondary",
             ):
                 st.switch_page("pages/1_Play.py")
             if st.button(
                 "Playground",
-                use_container_width=True,
+                width="stretch",
                 type="primary" if current_page == "playground" else "secondary",
             ):
                 st.switch_page("pages/3_Playground.py")
             if st.button(
                 "Profile",
-                use_container_width=True,
+                width="stretch",
                 type="primary" if current_page == "profile" else "secondary",
             ):
                 st.switch_page("pages/4_Profile.py")
-            if st.button("Sign Out", use_container_width=True):
+            if st.button("Sign Out", width="stretch"):
                 for key in list(st.session_state.keys()):
                     del st.session_state[key]
                 st.cache_resource.clear()

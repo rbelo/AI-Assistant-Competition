@@ -1,4 +1,5 @@
 import re
+import time
 
 import autogen
 
@@ -189,6 +190,8 @@ def create_chat(
     summary_termination_message,
     store_in_db=True,
     game_type="zero-sum",
+    timing_totals=None,
+    run_diagnostics=None,
 ):
     """
     Create a negotiation chat between two teams.
@@ -232,9 +235,12 @@ def create_chat(
     if hasattr(agent2, "system_message") and agent2.system_message:
         agent2.update_system_message(game_context + agent2.system_message)
 
+    chat_start = time.perf_counter()
     chat = agent1.initiate_chat(agent2, clear_history=True, max_turns=num_turns, message=starting_message)
+    chat_elapsed = time.perf_counter() - chat_start
 
     negotiation = ""
+    turn_count = len(chat.chat_history) if getattr(chat, "chat_history", None) else 0
 
     for _i, entry in enumerate(chat.chat_history):
         clean_msg = clean_agent_message(name1, name2, entry["content"])
@@ -242,7 +248,9 @@ def create_chat(
         negotiation += formatted
     summary_text = ""
     deal_value = -1
+    summary_elapsed = 0.0
     if summary_agent and user:
+        summary_start = time.perf_counter()
         summary_text, deal_value = evaluate_deal_summary(
             chat.chat_history,
             summary_prompt,
@@ -253,14 +261,15 @@ def create_chat(
             role2_name=name2,
             history_size=4,
         )
-        if summary_text:
-            negotiation += "\n" + summary_text
+        summary_elapsed = time.perf_counter() - summary_start
 
+    db_elapsed = 0.0
     if store_in_db and minimizer_team and maximizer_team and game_id and round_num is not None:
         class1, group1 = parse_team_name(minimizer_team["Name"])
         class2, group2 = parse_team_name(maximizer_team["Name"])
         if class1 and group1 is not None and class2 and group2 is not None:
             try:
+                db_start = time.perf_counter()
                 insert_negotiation_chat(
                     game_id=game_id,
                     round_number=round_num,
@@ -272,8 +281,20 @@ def create_chat(
                     summary=summary_text,
                     deal_value=deal_value,
                 )
+                db_elapsed = time.perf_counter() - db_start
             except Exception as e:
                 print(f"Warning: Failed to store negotiation chat: {e}")
+
+    if timing_totals is not None:
+        timing_totals["chat_seconds"] += chat_elapsed
+        timing_totals["summary_seconds"] += summary_elapsed
+        timing_totals["db_seconds"] += db_elapsed
+        timing_totals["chats_measured"] += 1
+
+    if run_diagnostics is not None:
+        run_diagnostics["total_turns"] += turn_count
+        run_diagnostics["summary_calls"] += 1 if (summary_agent and user) else 0
+        run_diagnostics["successful_chats"] += 1
 
     return deal_value
 
@@ -515,14 +536,41 @@ def create_chats(
     )
 
     max_retries = 10
-    total_matches = 0
+    total_matches = sum(len(round_matches) * 2 for round_matches in schedule)
     completed_matches = 0
+    processed_matches = 0
+    timing_totals = {
+        "chat_seconds": 0.0,
+        "summary_seconds": 0.0,
+        "db_seconds": 0.0,
+        "chats_measured": 0,
+    }
+    run_diagnostics = {
+        "attempts_total": 0,
+        "attempts_failed": 0,
+        "summary_calls": 0,
+        "total_turns": 0,
+        "successful_chats": 0,
+    }
+
+    def emit_progress(round_num, team1, team2, role1_name, role2_name, phase, attempt=None, elapsed_seconds=None):
+        if progress_callback:
+            progress_callback(
+                round_num=round_num,
+                team1=team1,
+                team2=team2,
+                role1_name=role1_name,
+                role2_name=role2_name,
+                completed_matches=processed_matches,
+                total_matches=total_matches,
+                phase=phase,
+                attempt=attempt,
+                elapsed_seconds=elapsed_seconds,
+            )
 
     errors_matchups = []
 
     for round_, round_matches in enumerate(schedule, 1):
-        total_matches += len(round_matches) * 2
-
         for match in round_matches:
 
             # Identify the two teams that play in each match of the round, by their id
@@ -539,12 +587,15 @@ def create_chats(
 
             insert_round_data(game_id, round_, class1, group1, class2, group2, None, None, None, None)
 
-            if progress_callback:
-                progress_callback(round_, team1, team2, initiator_role_name, responder_role_name)
-
             # Attempt to create the first chat
+            first_chat_success = False
             for attempt in range(max_retries):
+                attempt_start = time.perf_counter()
                 try:
+                    run_diagnostics["attempts_total"] += 1
+                    emit_progress(
+                        round_, team1, team2, initiator_role_name, responder_role_name, "running", attempt + 1
+                    )
 
                     if attempt % 2 == 0:
                         c = " "
@@ -566,6 +617,8 @@ def create_chats(
                         user,
                         summary_agent,
                         summary_termination_message,
+                        timing_totals=timing_totals,
+                        run_diagnostics=run_diagnostics,
                     )
                     score_maximizer, score_minimizer = compute_deal_scores(
                         deal,
@@ -593,16 +646,46 @@ def create_chats(
                         team2_role_index,
                     )
                     completed_matches += 1
+                    first_chat_success = True
 
                     break  # Exit retry loop on success
 
                 except Exception:
+                    run_diagnostics["attempts_failed"] += 1
+                    elapsed = round(time.perf_counter() - attempt_start, 2)
+                    emit_progress(
+                        round_,
+                        team1,
+                        team2,
+                        initiator_role_name,
+                        responder_role_name,
+                        "retrying",
+                        attempt + 1,
+                        elapsed_seconds=elapsed,
+                    )
                     if attempt == max_retries - 1:
                         errors_matchups.append((round_, team1["Name"], team2["Name"]))
+            elapsed = round(time.perf_counter() - attempt_start, 2)
+            processed_matches += 1
+            emit_progress(
+                round_,
+                team1,
+                team2,
+                initiator_role_name,
+                responder_role_name,
+                "completed" if first_chat_success else "failed",
+                elapsed_seconds=elapsed,
+            )
 
             # Attempt to create the second chat
+            second_chat_success = False
             for attempt in range(max_retries):
+                attempt_start = time.perf_counter()
                 try:
+                    run_diagnostics["attempts_total"] += 1
+                    emit_progress(
+                        round_, team2, team1, initiator_role_name, responder_role_name, "running", attempt + 1
+                    )
 
                     if attempt % 2 == 0:
                         c = " "
@@ -624,6 +707,8 @@ def create_chats(
                         user,
                         summary_agent,
                         summary_termination_message,
+                        timing_totals=timing_totals,
+                        run_diagnostics=run_diagnostics,
                     )
                     score_maximizer, score_minimizer = compute_deal_scores(
                         deal,
@@ -651,19 +736,75 @@ def create_chats(
                         team2_role_index,
                     )
                     completed_matches += 1
+                    second_chat_success = True
 
                     break  # Exit retry loop on success
 
                 except Exception:
+                    run_diagnostics["attempts_failed"] += 1
+                    elapsed = round(time.perf_counter() - attempt_start, 2)
+                    emit_progress(
+                        round_,
+                        team2,
+                        team1,
+                        initiator_role_name,
+                        responder_role_name,
+                        "retrying",
+                        attempt + 1,
+                        elapsed_seconds=elapsed,
+                    )
                     if attempt == max_retries - 1:
                         errors_matchups.append((round_, team2["Name"], team1["Name"]))
+            elapsed = round(time.perf_counter() - attempt_start, 2)
+            processed_matches += 1
+            emit_progress(
+                round_,
+                team2,
+                team1,
+                initiator_role_name,
+                responder_role_name,
+                "completed" if second_chat_success else "failed",
+                elapsed_seconds=elapsed,
+            )
+
+    timing_summary = {
+        "chat_seconds_total": round(timing_totals["chat_seconds"], 3),
+        "summary_seconds_total": round(timing_totals["summary_seconds"], 3),
+        "db_seconds_total": round(timing_totals["db_seconds"], 3),
+        "chats_measured": timing_totals["chats_measured"],
+    }
+    if timing_totals["chats_measured"]:
+        timing_summary["chat_seconds_avg"] = round(timing_totals["chat_seconds"] / timing_totals["chats_measured"], 3)
+        timing_summary["summary_seconds_avg"] = round(
+            timing_totals["summary_seconds"] / timing_totals["chats_measured"], 3
+        )
+        timing_summary["db_seconds_avg"] = round(timing_totals["db_seconds"] / timing_totals["chats_measured"], 3)
+    else:
+        timing_summary["chat_seconds_avg"] = 0.0
+        timing_summary["summary_seconds_avg"] = 0.0
+        timing_summary["db_seconds_avg"] = 0.0
+
+    diag_summary = {
+        "attempts_total": run_diagnostics["attempts_total"],
+        "attempts_failed": run_diagnostics["attempts_failed"],
+        "retries_used": max(run_diagnostics["attempts_total"] - processed_matches, 0),
+        "summary_calls": run_diagnostics["summary_calls"],
+        "avg_turns_per_successful_chat": round(
+            run_diagnostics["total_turns"] / run_diagnostics["successful_chats"], 2
+        )
+        if run_diagnostics["successful_chats"]
+        else 0.0,
+    }
 
     # error messages
     if not errors_matchups:
         return {
             "status": "success",
             "completed_matches": completed_matches,
+            "processed_matches": processed_matches,
             "total_matches": total_matches,
+            "timing": timing_summary,
+            "diagnostics": diag_summary,
         }
 
     else:
@@ -673,7 +814,16 @@ def create_chats(
         for match in errors_matchups:
             error_message += f"- Round {match[0]} - {match[1]} ({name_roles[0]}) vs {match[2]} ({name_roles[1]});\n"
 
-        return error_message
+        return {
+            "status": "partial",
+            "completed_matches": completed_matches,
+            "processed_matches": processed_matches,
+            "total_matches": total_matches,
+            "errors": errors_matchups,
+            "message": error_message,
+            "timing": timing_summary,
+            "diagnostics": diag_summary,
+        }
 
 
 def create_all_error_chats(
