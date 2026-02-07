@@ -52,14 +52,16 @@ psql -d ai_assistant_competition -f database/Tables_AI_Negotiator.sql
 
 ```
 tests/
-├── conftest.py              # Shared fixtures (mocks for Streamlit, DB, Drive)
+├── conftest.py              # Shared fixtures (mocks for Streamlit, DB, external APIs)
 ├── unit/                    # Fast tests, no external deps
-│   ├── test_student_utils.py    # CSV processing tests
+│   ├── test_control_panel_ui_helpers.py  # Control-panel helper behavior
+│   ├── test_database_crud.py             # Database CRUD wrapper tests
 │   ├── test_schedule.py         # Berger algorithm tests
 │   ├── test_email.py            # Email validation tests
-│   └── test_drive.py            # Drive file manager tests
+│   ├── test_negotiations_logic.py       # Negotiation orchestration/utilities
+│   └── test_negotiations_scoring.py     # Deal scoring behavior
 ├── integration/             # Tests with mocked external services
-│   └── test_csv_processing.py   # Full CSV import flow
+│   └── test_openai_latency.py   # Optional live API latency check
 └── e2e/                     # End-to-end Playwright tests
     ├── conftest.py              # E2E fixtures (instructor_page, simulation_test_game)
     ├── test_game_creation.py    # Game creation flow
@@ -84,18 +86,22 @@ tests/
 
 **Pages** (`streamlit/pages/`):
 - `1_Play.py` - Main game interface with leaderboards and game selection
-- `2_Control_Panel.py` - Admin panel for instructors (game creation, student management, running negotiations)
+- `2_Control_Panel.py` - Admin panel entrypoint (state + tab orchestration delegated to modules)
 - `3_Playground.py` - Student agent testing environment
 - `4_Profile.py` - User profile management
 
 **Core Modules** (`streamlit/modules/`):
 - `database_handler.py` - All PostgreSQL operations via parameterized queries
-- `negotiations.py` - AutoGen agent orchestration; creates agents from student prompts, runs negotiations, calculates scores
-- `metrics_handler.py` - Analytics tracking across multiple tables
-- `drive_file_manager.py` - Google Drive integration for storing student prompts and game transcripts
+- `negotiations.py` - Public negotiation orchestration facade used by pages
+- `negotiations_common.py` - Shared negotiation utilities (scoring, role resolution, termination checks, API config)
+- `negotiations_agents.py` - Agent construction from submitted prompts and reservation values
+- `negotiations_summary.py` - Deal-summary generation/parsing helpers
+- `negotiations_run_helpers.py` - Simulation timing/diagnostic summarization helpers
 - `schedule.py` - Berger round-robin tournament scheduling algorithm
 - `student_utils.py` - CSV processing for bulk student import (normalizes column headers)
 - `student_playground.py` - Logic for testing agent prompts before submission
+- `control_panel/` - Modularized instructor UI tabs and state management (`setup`, `submissions`, `simulation`, `results`)
+- `control_panel_ui_helpers.py` - Shared formatting/parsing/progress helpers for Control Panel UI
 
 **Data Flow:** Streamlit UI → Session State → Business Logic (modules) → Database/External Services
 
@@ -103,13 +109,13 @@ tests/
 
 **Game Types:** Zero-sum negotiation (buyer/seller) and Prisoner's Dilemma
 
-**Student Prompt Format:** Two prompts separated by `#_;:)` delimiter - first for role 1, second for role 2. Stored in Google Drive as `Game{id}_Class{class}_Group{group}`.
+**Student Prompt Format:** Two prompts separated by `#_;:)` delimiter - first for role 1, second for role 2. Stored in PostgreSQL (`student_prompt` table).
 
 **Negotiation Flow:**
 1. Instructor creates game with roles (e.g., "Buyer", "Seller") and value ranges
 2. Students submit prompts for both roles via Playground
 3. Instructor runs negotiations - agents are created via AutoGen `ConversableAgent`
-4. `create_agents()` loads prompts from Drive, creates agent pairs with termination message handling
+4. `create_agents()` loads prompts from PostgreSQL, creates agent pairs with termination message handling
 5. `create_chats()` runs round-robin matches using Berger schedule
 6. Summary agent evaluates deal outcome, scores calculated and stored in `round` table
 
@@ -119,7 +125,8 @@ tests/
 
 - Page scripts export top-level Streamlit components only; supporting logic goes in `streamlit/modules/`
 - Secrets in `.streamlit/secrets.toml`, accessed via `st.secrets`
-- Mock external calls (Drive, database) using `unittest.mock` in tests
+- Environment-specific DB URLs can be sourced from `.env` (Makefile auto-loads) and/or `streamlit/.streamlit/secrets.toml`
+- Mock external calls (database/APIs) using `unittest.mock` in tests
 - Commit messages use Conventional Commits style: `feat:`, `fix:`, `refactor:`, `chore:`
 
 ## Database Schema

@@ -15,6 +15,7 @@ A learning platform for students to build AI agents that compete in negotiation 
 - **Frontend**: Streamlit for interactive dashboard
 - **AI Framework**: Microsoft's AutoGen for agent interactions
 - **Database**: PostgreSQL for data persistence
+- **Negotiation Architecture**: `negotiations.py` facade + focused `negotiations_*` helper modules
 - **Testing**: pytest for comprehensive test coverage
 
 ---
@@ -63,7 +64,15 @@ make run
 | `make format` | Format code with Black |
 | `make check` | Run lint + tests (CI simulation) |
 | `make run` | Start Streamlit app |
-| `make run-dev` | Start Streamlit app with auto-login (no auth) |
+| `make run-dev` | Alias of `make run-dev-admin` |
+| `make run-dev-admin` | Start Streamlit app with admin auto-login |
+| `make run-dev-student` | Start Streamlit app with seeded student auto-login |
+| `make test-production-db-connection` | Check production DB connectivity |
+| `make test-staging-db-connection` | Check staging DB connectivity |
+| `make reset-local-db` | Reset local DB with full seed data |
+| `make reset-staging-db` | Reset staging DB with minimal seed data |
+| `make reset-production-db` | Reset production DB (guarded; explicit confirmation required) |
+| `make sync-production-to-staging` | Clone production public schema/data into staging |
 
 For detailed documentation, see the [Developer Guide](documentation/DEVELOPER_GUIDE.md).
 
@@ -77,9 +86,23 @@ ai-assistant-competition/
 │   ├── 0_Home.py                                # Streamlit entrypoint
 │   ├── __init__.py                              # Package initialization
 │   ├── modules/                                 # Core functionality modules
-│   │   ├── metrics_handler.py                   # Handles analytics and metrics
 │   │   ├── database_handler.py                  # Database operations
-│   │   ├── negotiations.py                      # Game logic and rules
+│   │   ├── negotiations.py                      # Negotiation facade/orchestration
+│   │   ├── negotiations_common.py               # Shared negotiation helpers
+│   │   ├── negotiations_agents.py               # Agent creation utilities
+│   │   ├── negotiations_summary.py              # Summary and deal parsing helpers
+│   │   ├── negotiations_run_helpers.py          # Timing/diagnostics helpers
+│   │   ├── control_panel/                       # Modular instructor control-panel UI
+│   │   │   ├── game_overview.py                 # Game Overview orchestrator
+│   │   │   ├── game_overview_setup.py           # Setup tab
+│   │   │   ├── game_overview_submissions.py     # Submissions tab
+│   │   │   ├── game_overview_simulation.py      # Simulation tab
+│   │   │   ├── game_overview_results.py         # Results tab
+│   │   │   ├── create_game.py                   # Create Game tab
+│   │   │   ├── student_management.py            # Student Management tab
+│   │   │   ├── state.py                         # Control-panel session state
+│   │   │   └── view.py                          # Control-panel tab layout
+│   │   ├── control_panel_ui_helpers.py          # Shared control-panel helpers
 │   │   ├── student_playground.py                # Testing environment
 │   │   ├── email_service.py                     # Email notifications
 │   │   ├── game_modes.py                        # Game templates
@@ -98,7 +121,7 @@ ai-assistant-competition/
 │   ├── unit/                                    # Fast tests (no external deps)
 │   ├── integration/                             # Mocked external services
 │   ├── e2e/                                     # Playwright end-to-end tests
-│   └── unit_tests.py                            # Legacy unit tests
+│   └── conftest.py                              # Shared test fixtures
 ├── documentation/                               # User and developer guides
 │   ├── USER_GUIDE.md                            # Student documentation
 │   └── DEVELOPER_GUIDE.md                       # Technical documentation

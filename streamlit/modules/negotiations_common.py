@@ -1,0 +1,151 @@
+import re
+
+
+def clean_agent_message(agent_name_1, agent_name_2, message):
+    if not message:
+        return ""
+
+    pattern = rf"^\s*(?:{re.escape(agent_name_1)}|{re.escape(agent_name_2)})\s*:\s*"
+    clean_message = re.sub(pattern, "", message, flags=re.IGNORECASE)
+    return clean_message
+
+
+def parse_team_name(team_name):
+    if not team_name:
+        return None, None
+    parts = team_name.split("_")
+    if len(parts) < 2:
+        return None, None
+    class_part = parts[0].replace("Class", "")
+    group_part = parts[1].replace("Group", "")
+    try:
+        group_part = int(group_part)
+    except ValueError:
+        pass
+    return class_part, group_part
+
+
+def compute_deal_scores(deal, maximizer_value, minimizer_value, precision=4):
+    if deal is None:
+        return 0, 0
+    if deal == -1:
+        return -1, -1
+
+    if maximizer_value < minimizer_value:
+        if deal < maximizer_value:
+            return 0, 1
+        if deal > minimizer_value:
+            return 1, 0
+        ratio = round((deal - maximizer_value) / (minimizer_value - maximizer_value), precision)
+        ratio = max(0, min(1, ratio))
+        return ratio, 1 - ratio
+
+    if deal > maximizer_value:
+        return 1, 0
+    if deal < minimizer_value:
+        return 0, 1
+
+    return 0, 0
+
+
+def resolve_initiator_role_index(name_roles, conversation_order):
+    if not conversation_order:
+        return 1
+
+    normalized = str(conversation_order).strip()
+    if normalized == "same":
+        return 1
+    if normalized == "opposite":
+        return 2
+
+    if normalized == name_roles[0]:
+        return 1
+    if normalized == name_roles[1]:
+        return 2
+
+    return 1
+
+
+def get_role_agent(team, role_index):
+    if role_index == 1:
+        return team["Agent 1"]
+    if role_index == 2:
+        return team["Agent 2"]
+    raise ValueError(f"Invalid role index: {role_index}")
+
+
+def get_minimizer_reservation(team):
+    return team["Value 1"]
+
+
+def get_maximizer_reservation(team):
+    return team["Value 2"]
+
+
+def get_minimizer_maximizer(initiator_team, responder_team, initiator_role_index):
+    if initiator_role_index == 1:
+        return initiator_team, responder_team
+    return responder_team, initiator_team
+
+
+def is_valid_termination(msg, history, negotiation_termination_message):
+    if negotiation_termination_message not in msg["content"]:
+        return False
+
+    if not history:
+        return True
+
+    last_messages = history[-4:] if len(history) >= 4 else history
+
+    agreement_indicators = [
+        "agree",
+        "accepted",
+        "deal",
+        "settled",
+        "confirmed",
+        "final",
+        "conclude",
+        "complete",
+        "done",
+    ]
+
+    agreement_count = sum(
+        1 for m in last_messages if any(indicator in m["content"].lower() for indicator in agreement_indicators)
+    )
+
+    if agreement_count < 2:
+        return False
+
+    values = []
+    for m in last_messages:
+        clean_content = m["content"].replace("$", "").replace(",", "")
+        numbers = re.findall(r"-?\d+(?:\.\d+)?", clean_content)
+        if numbers:
+            values.extend([float(n) for n in numbers])
+
+    if values:
+        max_diff = max(values) * 0.05
+        if max(values) - min(values) > max_diff:
+            return False
+
+    return True
+
+
+def build_llm_config(model, api_key, temperature=0.3, top_p=0.5):
+    config_list = {"config_list": [{"model": model, "api_key": api_key}]}
+    if not model.startswith("gpt-5"):
+        config_list["temperature"] = temperature
+        config_list["top_p"] = top_p
+    return config_list
+
+
+def is_invalid_api_key_error(error):
+    message = str(error).lower()
+    return (
+        "invalid api key" in message
+        or "incorrect api key" in message
+        or "invalid_api_key" in message
+        or "unauthorized" in message
+        or "authentication" in message
+        or "401" in message
+    )
