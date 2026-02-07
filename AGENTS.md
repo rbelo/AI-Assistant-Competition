@@ -117,3 +117,9 @@ Common environment variables:
   - Linked issue/task IDs.
   - Any reviewer setup/config notes.
 - Keep secrets out of diffs and redact credentials/tokens.
+
+## Versioning
+- App version format: `vYYYY-MM-DD.N` (example: `v2026-02-07.0`).
+- For same-day fixes, increment `N` (`.1`, `.2`, ...).
+- On a new date, reset to `.0`.
+- Keep the displayed app version and release tag aligned.

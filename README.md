@@ -76,6 +76,13 @@ make run
 
 For detailed documentation, see the [Developer Guide](documentation/DEVELOPER_GUIDE.md).
 
+## Versioning
+
+- Format: `vYYYY-MM-DD.N` (example: `v2026-02-07.0`).
+- Same-day patches increment `N` (`v2026-02-07.1`, `v2026-02-07.2`, ...).
+- A new day starts at `.0`.
+- The app sidebar displays a hardcoded version string from `streamlit/modules/app_version.py`.
+
 ---
 
 ## Project Structure

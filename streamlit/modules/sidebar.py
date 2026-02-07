@@ -1,3 +1,5 @@
+from modules.app_version import get_app_version
+
 import streamlit as st
 
 
@@ -87,3 +89,4 @@ def render_sidebar(current_page=None):
                 st.caption(f"{email} • {role}")
             else:
                 st.caption(role)
+            st.caption(f"Version: {get_app_version()}")
