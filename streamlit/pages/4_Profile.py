@@ -1,6 +1,13 @@
 import hashlib
 import time
 
+from modules.auth_guard import ensure_session_defaults, require_auth
+
+import streamlit as st
+
+ensure_session_defaults()
+require_auth("Profile")
+
 import pandas as pd
 from modules.database_handler import (
     add_user_api_key,
@@ -18,8 +25,6 @@ from modules.database_handler import (
     update_user_api_key_name,
 )
 from modules.sidebar import render_sidebar
-
-import streamlit as st
 
 # Initialize session state for buttons if not set
 if "password_edit_mode" not in st.session_state:
@@ -216,7 +221,7 @@ def render_api_keys_section(user_id, usage_label):
 
 
 # Check if the user is logged in
-if st.session_state["authenticated"]:
+if st.session_state.get("authenticated", False):
 
     if st.session_state.instructor:
 
@@ -437,7 +442,3 @@ if st.session_state["authenticated"]:
 
             else:
                 st.write("No games played yet.")
-
-else:
-    st.title("Profile")
-    st.warning("Please login first to access Profile.")

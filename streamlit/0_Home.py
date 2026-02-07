@@ -3,33 +3,14 @@ import os
 import time
 
 import jwt
+from modules.auth_guard import ensure_session_defaults
 from modules.database_handler import update_password
 from modules.email_service import set_password, valid_email
 from modules.sidebar import render_sidebar
 
 import streamlit as st
 
-# Initialize session state variables if they are not already defined
-if "authenticated" not in st.session_state:
-    st.session_state["authenticated"] = False
-
-if "instructor" not in st.session_state:
-    st.session_state["instructor"] = False
-
-if "set_password_email" not in st.session_state:
-    st.session_state["set_password_email"] = ""
-
-if "login_email" not in st.session_state:
-    st.session_state["login_email"] = ""
-
-if "login_password" not in st.session_state:
-    st.session_state["login_password"] = ""
-
-if "show_set_password_form" not in st.session_state:
-    st.session_state["show_set_password_form"] = False
-
-if "user_id" not in st.session_state:
-    st.session_state["user_id"] = ""
+ensure_session_defaults()
 
 # Development auto-login (set DEV_AUTO_LOGIN=1 to enable)
 if os.getenv("DEV_AUTO_LOGIN") and not st.session_state["authenticated"]:

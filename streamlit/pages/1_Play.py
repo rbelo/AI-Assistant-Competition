@@ -1,5 +1,12 @@
 import re
 
+from modules.auth_guard import ensure_session_defaults, require_auth
+
+import streamlit as st
+
+ensure_session_defaults()
+require_auth("Play")
+
 from modules.database_handler import (
     fetch_current_games_data_by_user_id,
     get_academic_years_of_students,
@@ -15,8 +22,6 @@ from modules.database_handler import (
     insert_student_prompt,
 )
 from modules.sidebar import render_sidebar
-
-import streamlit as st
 
 # ------------------------ SET THE DEFAULT SESSION STATE FOR THE PLAY SECTION ---------------------------- #
 
@@ -35,7 +40,7 @@ render_sidebar(current_page="play")
 # -------------------------------------------------------------------------------------------------------- #
 
 # Check if the user is authenticated
-if st.session_state["authenticated"]:
+if st.session_state.get("authenticated", False):
 
     st.title("Play")
 
@@ -259,8 +264,3 @@ if st.session_state["authenticated"]:
             "In the meantime, you can test prompt ideas in the Playground."
         )
         st.page_link("pages/3_Playground.py", label="Go to Playground", icon=":material/science:")
-
-# If the user is not authenticated yet
-else:
-    st.title("Play")
-    st.warning("Please login first to access Play.")
