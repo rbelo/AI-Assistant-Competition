@@ -103,7 +103,6 @@ ai-assistant-competition/
 │   │   │   ├── state.py                         # Control-panel session state
 │   │   │   └── view.py                          # Control-panel tab layout
 │   │   ├── control_panel_ui_helpers.py          # Shared control-panel helpers
-│   │   ├── student_playground.py                # Testing environment
 │   │   ├── email_service.py                     # Email notifications
 │   │   ├── game_modes.py                        # Game templates
 │   │   ├── schedule.py                          # Competition scheduling

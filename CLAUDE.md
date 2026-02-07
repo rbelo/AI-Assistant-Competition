@@ -99,7 +99,6 @@ tests/
 - `negotiations_run_helpers.py` - Simulation timing/diagnostic summarization helpers
 - `schedule.py` - Berger round-robin tournament scheduling algorithm
 - `student_utils.py` - CSV processing for bulk student import (normalizes column headers)
-- `student_playground.py` - Logic for testing agent prompts before submission
 - `control_panel/` - Modularized instructor UI tabs and state management (`setup`, `submissions`, `simulation`, `results`)
 - `control_panel_ui_helpers.py` - Shared formatting/parsing/progress helpers for Control Panel UI
 

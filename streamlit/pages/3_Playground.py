@@ -12,6 +12,7 @@ from modules.database_handler import (
     list_user_api_keys,
 )
 from modules.negotiation_display import render_chat_summary
+from modules.llm_models import MODEL_EXPLANATIONS, MODEL_OPTIONS
 from modules.negotiations import (
     build_llm_config,
     build_summary_agents,
@@ -167,11 +168,8 @@ else:
 
     with tab1:
         st.header("Create New Test Negotiation")
-        model_options = ["gpt-5-mini", "gpt-5-nano"]
-        model_explanations = {
-            "gpt-5-mini": "Recommended default for negotiation quality, consistency, and speed.",
-            "gpt-5-nano": "Lowest-cost option for quick experimentation and batch tests.",
-        }
+        model_options = MODEL_OPTIONS
+        model_explanations = MODEL_EXPLANATIONS
         with st.form(key="playground_form"):
             col1, col2 = st.columns(2)
 

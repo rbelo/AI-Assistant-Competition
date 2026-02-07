@@ -20,6 +20,7 @@ from ..database_handler import (
     update_num_rounds_game,
     upsert_game_simulation_params,
 )
+from ..llm_models import MODEL_EXPLANATIONS, MODEL_OPTIONS
 from ..negotiations import (
     build_llm_config,
     create_all_error_chats,
@@ -60,11 +61,8 @@ def render_simulation_tab(selected_game: dict) -> None:
             teams.remove(i)
 
         simulation_params = get_game_simulation_params(game_id)
-        model_options = ["gpt-5-mini", "gpt-5-nano"]
-        model_explanations = {
-            "gpt-5-mini": "Recommended default for negotiation quality, consistency, and speed.",
-            "gpt-5-nano": "Lowest-cost option for quick, high-volume simulation runs.",
-        }
+        model_options = MODEL_OPTIONS
+        model_explanations = MODEL_EXPLANATIONS
         default_model = simulation_params["model"] if simulation_params else "gpt-5-mini"
         default_starting_message = (
             simulation_params["starting_message"] if simulation_params else "Hello, shall we start the negotiation?"

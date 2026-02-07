@@ -1,6 +1,11 @@
 import streamlit as st
 
 
+def _escape_markdown_currency(text: str) -> str:
+    """Prevent Streamlit markdown from treating $...$ as LaTeX math."""
+    return text.replace("$", r"\$")
+
+
 def render_chat_summary(
     summary_text,
     deal_value,
@@ -19,7 +24,7 @@ def render_chat_summary(
         st.subheader(summary_label)
 
     if summary_text:
-        st.write(summary_text)
+        st.write(_escape_markdown_currency(summary_text))
     else:
         st.info("Summary unavailable for this chat.")
 
