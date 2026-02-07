@@ -8,11 +8,10 @@ ensure_session_defaults()
 require_auth("Play")
 
 from modules.database_handler import (
-    fetch_current_games_data_by_user_id,
+    fetch_games_data_by_user_id,
     get_academic_years_of_students,
-    get_class_from_user_id,
+    get_class_and_group_from_user_id,
     get_classes_of_students,
-    get_group_id_from_user_id,
     get_group_values,
     get_groups_of_students,
     get_negotiation_chat,
@@ -63,20 +62,10 @@ if st.session_state.get("authenticated", False):
         USER_ID = get_user_id_of_student(select_year, CLASS, GROUP_ID)
 
     else:
-        GROUP_ID = get_group_id_from_user_id(st.session_state["user_id"])
-        CLASS = get_class_from_user_id(st.session_state["user_id"])
+        CLASS, GROUP_ID = get_class_and_group_from_user_id(st.session_state["user_id"])
         USER_ID = st.session_state.user_id
 
-    current_games = fetch_current_games_data_by_user_id("<", USER_ID)
-    past_games = fetch_current_games_data_by_user_id(">", USER_ID)
-
-    games = []
-    for game in current_games:
-        game["status"] = "Active"
-        games.append(game)
-    for game in past_games:
-        game["status"] = "Closed"
-        games.append(game)
+    games = fetch_games_data_by_user_id(USER_ID)
 
     if games:
 

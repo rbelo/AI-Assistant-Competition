@@ -331,6 +331,66 @@ def fetch_current_games_data_by_user_id(sign, user_id):
         return []
 
 
+def fetch_games_data_by_user_id(user_id):
+    """
+    Fetch all games for a user with computed status in a single query.
+
+    Returns a list of game dictionaries with status in {"Active", "Closed"}.
+    """
+    conn = get_connection()
+    if not conn:
+        return []
+    try:
+        with conn.cursor() as cur:
+            query = """
+                SELECT
+                    g.game_id,
+                    g.available,
+                    g.created_by,
+                    g.game_name,
+                    g.number_of_rounds,
+                    g.name_roles,
+                    g.game_academic_year,
+                    g.game_class,
+                    g.password,
+                    g.timestamp_game_creation,
+                    g.timestamp_submission_deadline,
+                    g.explanation,
+                    CASE
+                        WHEN CURRENT_TIMESTAMP < g.timestamp_submission_deadline THEN 'Active'
+                        ELSE 'Closed'
+                    END AS status
+                FROM game AS g
+                JOIN plays AS p ON g.game_id = p.game_id
+                WHERE p.user_id = %(param1)s
+                ORDER BY g.game_id DESC;
+            """
+            cur.execute(query, {"param1": user_id})
+            rows = cur.fetchall()
+            games = []
+            for row in rows:
+                games.append(
+                    {
+                        "game_id": row[0],
+                        "available": row[1],
+                        "created_by": row[2],
+                        "game_name": row[3],
+                        "number_of_rounds": row[4],
+                        "name_roles": row[5],
+                        "game_academic_year": row[6],
+                        "game_class": row[7],
+                        "password": row[8],
+                        "timestamp_game_creation": row[9],
+                        "timestamp_submission_deadline": row[10],
+                        "explanation": row[11],
+                        "status": row[12],
+                    }
+                )
+            return games
+    except Exception:
+        return []
+
+
 # Function to retrieve the last gameID from the database and increment it
 def get_next_game_id():
     conn = get_connection()
@@ -576,6 +636,23 @@ def get_class_from_user_id(user_id):
 
     except Exception:
         return False
+
+
+def get_class_and_group_from_user_id(user_id):
+    """Fetch class and group_id together to avoid multiple DB roundtrips."""
+    conn = get_connection()
+    if not conn:
+        return False, False
+    try:
+        with conn.cursor() as cur:
+            query = "SELECT class, group_id FROM user_ WHERE user_id = %(param1)s;"
+            cur.execute(query, {"param1": user_id})
+            row = cur.fetchone()
+            if not row:
+                return False, False
+            return row[0], row[1]
+    except Exception:
+        return False, False
 
 
 # Function to remove a student from the database

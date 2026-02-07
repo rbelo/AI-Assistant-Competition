@@ -12,7 +12,7 @@ from ..database_handler import (
     update_access_to_chats,
 )
 from ..negotiation_display import render_chat_summary
-from ..negotiations import extract_summary_from_transcript
+from ..negotiations_summary import extract_summary_from_transcript
 
 
 def render_results_tab(selected_game: dict) -> None:

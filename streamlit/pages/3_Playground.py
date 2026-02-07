@@ -31,14 +31,13 @@ try:
     )
     from modules.llm_models import MODEL_EXPLANATIONS, MODEL_OPTIONS
     from modules.negotiation_display import render_chat_summary
-    from modules.negotiations import (
+    from modules.negotiations_common import (
         build_llm_config,
-        build_summary_agents,
         compute_deal_scores,
-        evaluate_deal_summary,
         is_invalid_api_key_error,
         is_valid_termination,
     )
+    from modules.negotiations_summary import build_summary_agents, evaluate_deal_summary
 except Exception as exc:
     st.title("AI Agent Playground")
     st.error("Playground dependencies failed to load. Please contact the app admin.")
