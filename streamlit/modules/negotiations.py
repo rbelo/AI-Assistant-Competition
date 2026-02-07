@@ -1,5 +1,6 @@
 import time
 
+from .conversation_engine import ConversationEngine
 from .database_handler import (
     get_error_matchups,
     get_game_by_id,
@@ -29,7 +30,7 @@ from .negotiations_run_helpers import (
 from .negotiations_summary import (
     _build_summary_context,
     _extract_summary_text,
-    build_summary_agents,
+    build_summary_agent,
     evaluate_deal_summary,
     extract_summary_from_transcript,
     parse_deal_value,
@@ -40,7 +41,7 @@ __all__ = [
     "_build_summary_context",
     "_extract_summary_text",
     "build_llm_config",
-    "build_summary_agents",
+    "build_summary_agent",
     "clean_agent_message",
     "compute_deal_scores",
     "create_agents",
@@ -61,6 +62,13 @@ __all__ = [
 ]
 
 
+def _make_termination_fn(negotiation_termination_message):
+    """Return a termination predicate that fires when the phrase appears."""
+    def fn(msg, history):
+        return negotiation_termination_message in msg["content"]
+    return fn
+
+
 def create_chat(
     game_id,
     minimizer_team,
@@ -70,9 +78,10 @@ def create_chat(
     num_turns,
     summary_prompt,
     round_num,
-    user,
+    engine,
     summary_agent,
     summary_termination_message,
+    negotiation_termination_message,
     store_in_db=True,
     game_type="zero-sum",
     timing_totals=None,
@@ -92,13 +101,15 @@ def create_chat(
     name1 = agent1.name
     name2 = agent2.name
 
-    if hasattr(agent1, "system_message") and agent1.system_message:
-        agent1.update_system_message(game_context + agent1.system_message)
-    if hasattr(agent2, "system_message") and agent2.system_message:
-        agent2.update_system_message(game_context + agent2.system_message)
+    if agent1.system_message:
+        agent1.system_message = game_context + agent1.system_message
+    if agent2.system_message:
+        agent2.system_message = game_context + agent2.system_message
+
+    termination_fn = _make_termination_fn(negotiation_termination_message)
 
     chat_start = time.perf_counter()
-    chat = agent1.initiate_chat(agent2, clear_history=True, max_turns=num_turns, message=starting_message)
+    chat = engine.run_bilateral(agent1, agent2, starting_message, num_turns, termination_fn)
     chat_elapsed = time.perf_counter() - chat_start
 
     negotiation = ""
@@ -111,13 +122,13 @@ def create_chat(
     summary_text = ""
     deal_value = -1
     summary_elapsed = 0.0
-    if summary_agent and user:
+    if summary_agent:
         summary_start = time.perf_counter()
         summary_text, deal_value = evaluate_deal_summary(
+            engine,
             chat.chat_history,
             summary_prompt,
             summary_termination_message,
-            user,
             summary_agent,
             role1_name=name1,
             role2_name=name2,
@@ -155,7 +166,7 @@ def create_chat(
 
     if run_diagnostics is not None:
         run_diagnostics["total_turns"] += turn_count
-        run_diagnostics["summary_calls"] += 1 if (summary_agent and user) else 0
+        run_diagnostics["summary_calls"] += 1 if summary_agent else 0
         run_diagnostics["successful_chats"] += 1
 
     return deal_value
@@ -163,7 +174,7 @@ def create_chat(
 
 def create_chats(
     game_id,
-    config_list,
+    llm_config,
     name_roles,
     conversation_order,
     teams,
@@ -178,13 +189,13 @@ def create_chats(
 ):
     schedule = berger_schedule([f"Class{i[0]}_Group{i[1]}" for i in teams], num_rounds)
 
-    team_info = create_agents(game_id, teams, values, name_roles, config_list, negotiation_termination_message)
+    engine = ConversationEngine(llm_config)
+    team_info = create_agents(game_id, teams, values, name_roles, negotiation_termination_message)
     initiator_role_index = resolve_initiator_role_index(name_roles, conversation_order)
     initiator_role_name = name_roles[initiator_role_index - 1]
     responder_role_name = name_roles[1 if initiator_role_index == 1 else 0]
 
-    user, summary_agent = build_summary_agents(
-        config_list,
+    summary_agent = build_summary_agent(
         summary_termination_message,
         negotiation_termination_message,
         include_summary=True,
@@ -262,9 +273,10 @@ def create_chats(
                         num_turns,
                         summary_prompt,
                         round_,
-                        user,
+                        engine,
                         summary_agent,
                         summary_termination_message,
+                        negotiation_termination_message,
                         timing_totals=timing_totals,
                         run_diagnostics=run_diagnostics,
                     )
@@ -347,9 +359,10 @@ def create_chats(
                         num_turns,
                         summary_prompt,
                         round_,
-                        user,
+                        engine,
                         summary_agent,
                         summary_termination_message,
+                        negotiation_termination_message,
                         timing_totals=timing_totals,
                         run_diagnostics=run_diagnostics,
                     )
@@ -437,7 +450,7 @@ def create_chats(
 
 def create_all_error_chats(
     game_id,
-    config_list,
+    llm_config,
     name_roles,
     conversation_order,
     values,
@@ -455,10 +468,10 @@ def create_all_error_chats(
     unique_teams = {tuple(item) for item in (teams1 + teams2)}
     teams = [list(team) for team in unique_teams]
 
-    team_info = create_agents(game_id, teams, values, name_roles, config_list, negotiation_termination_message)
+    engine = ConversationEngine(llm_config)
+    team_info = create_agents(game_id, teams, values, name_roles, negotiation_termination_message)
     initiator_role_index = resolve_initiator_role_index(name_roles, conversation_order)
-    user, summary_agent = build_summary_agents(
-        config_list,
+    summary_agent = build_summary_agent(
         summary_termination_message,
         negotiation_termination_message,
         include_summary=True,
@@ -493,9 +506,10 @@ def create_all_error_chats(
                         num_turns,
                         summary_prompt,
                         match[0],
-                        user,
+                        engine,
                         summary_agent,
                         summary_termination_message,
+                        negotiation_termination_message,
                     )
                     score_maximizer, score_minimizer = compute_deal_scores(
                         deal,
@@ -540,9 +554,10 @@ def create_all_error_chats(
                         num_turns,
                         summary_prompt,
                         match[0],
-                        user,
+                        engine,
                         summary_agent,
                         summary_termination_message,
+                        negotiation_termination_message,
                     )
                     score_maximizer, score_minimizer = compute_deal_scores(
                         deal,

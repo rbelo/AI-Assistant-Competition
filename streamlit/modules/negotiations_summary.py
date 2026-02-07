@@ -1,7 +1,6 @@
 import re
 
-import autogen
-
+from .conversation_engine import GameAgent
 from .negotiations_common import clean_agent_message
 
 
@@ -56,23 +55,20 @@ def parse_deal_value(summary_text, summary_termination_message):
 
 
 def evaluate_deal_summary(
+    engine,
     chat_history,
     summary_prompt,
     summary_termination_message,
-    user,
     summary_agent,
     role1_name=None,
     role2_name=None,
     history_size=4,
 ):
-    if not summary_agent or not user:
+    if not summary_agent or not engine:
         return "", -1
 
     summary_context = _build_summary_context(chat_history, role1_name, role2_name, history_size)
-    summary_eval = user.initiate_chat(
-        summary_agent, clear_history=True, max_turns=1, message=summary_context + (summary_prompt or "")
-    )
-    summary_text = _extract_summary_text(summary_eval, summary_agent.name)
+    summary_text = engine.single_decision(summary_agent, summary_context + (summary_prompt or ""))
     return summary_text, parse_deal_value(summary_text, summary_termination_message)
 
 
@@ -91,26 +87,13 @@ def extract_summary_from_transcript(transcript, summary_termination_message):
     return summary_text, parse_deal_value(summary_text, summary_termination_message)
 
 
-def build_summary_agents(
-    config_list, summary_termination_message, negotiation_termination_message, include_summary=False
-):
-    user = autogen.UserProxyAgent(
-        name="User",
-        llm_config=config_list,
-        human_input_mode="NEVER",
-        is_termination_msg=lambda msg: summary_termination_message in msg["content"],
-        code_execution_config={"work_dir": "repo", "use_docker": False},
-    )
-
+def build_summary_agent(summary_termination_message, negotiation_termination_message, include_summary=False):
     summary_prefix = ""
     if include_summary:
         summary_prefix = "Provide a concise 2-3 sentence summary before the final line.\n"
 
-    summary_agent = autogen.AssistantAgent(
+    return GameAgent(
         name="Summary_Agent",
-        llm_config=config_list,
-        human_input_mode="NEVER",
-        is_termination_msg=lambda msg: summary_termination_message in msg["content"],
         system_message=f"""You are a sophisticated negotiation analyzer. Your task is to determine if a negotiation has reached a valid agreement.
 
 Key Requirements:
@@ -134,5 +117,3 @@ Your response format:
 
 Be thorough in your analysis and only report an agreement if ALL conditions are met.""",
     )
-
-    return user, summary_agent

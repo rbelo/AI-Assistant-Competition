@@ -7,7 +7,7 @@ name = "ai-assistant-competition"
 version = "1.0.0"
 description = "A learning platform for students to build AI agents that compete in negotiation challenges"
 readme = "README.md"
-requires-python = ">=3.9,<3.14"  # autogen requires Python < 3.14
+requires-python = ">=3.9"
 license = {text = "MIT"}
 
 dependencies = [
@@ -15,7 +15,6 @@ dependencies = [
     "psycopg2-binary",
     "pyjwt",
     "streamlit-aggrid",
-    "autogen",
     "openai",
     "flask",
     "google-api-python-client",

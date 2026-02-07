@@ -19,6 +19,8 @@ if STREAMLIT_PATH not in sys.path:
     sys.path.insert(0, STREAMLIT_PATH)
 
 import modules.negotiations as neg  # noqa: E402
+from modules.conversation_engine import ChatResult, GameAgent  # noqa: E402
+from modules.llm_provider import LLMConfig  # noqa: E402
 from modules.negotiations import (  # noqa: E402
     _build_summary_context,
     _extract_summary_text,
@@ -364,8 +366,8 @@ class TestTeamAccessors:
     @pytest.fixture
     def team(self):
         return {
-            "Agent 1": MagicMock(name="agent1"),
-            "Agent 2": MagicMock(name="agent2"),
+            "Agent 1": GameAgent(name="agent1", system_message="prompt1"),
+            "Agent 2": GameAgent(name="agent2", system_message="prompt2"),
             "Value 1": 10,
             "Value 2": 20,
         }
@@ -516,27 +518,42 @@ class TestBuildLlmConfig:
     @pytest.mark.unit
     def test_non_gpt5_includes_temperature(self):
         config = build_llm_config("gpt-4o-mini", "sk-test")
-        assert config["config_list"] == [{"model": "gpt-4o-mini", "api_key": "sk-test"}]
-        assert config["temperature"] == 0.3
-        assert config["top_p"] == 0.5
+        assert isinstance(config, LLMConfig)
+        assert config.model == "gpt-4o-mini"
+        assert config.api_key == "sk-test"
+        assert config.temperature == 0.3
+        assert config.top_p == 0.5
 
     @pytest.mark.unit
     def test_gpt5_excludes_temperature(self):
         config = build_llm_config("gpt-5-mini", "sk-test")
-        assert config["config_list"] == [{"model": "gpt-5-mini", "api_key": "sk-test"}]
-        assert "temperature" not in config
-        assert "top_p" not in config
+        assert isinstance(config, LLMConfig)
+        assert config.model == "gpt-5-mini"
+        assert config.api_key == "sk-test"
+        assert config.temperature is None
+        assert config.top_p is None
 
     @pytest.mark.unit
     def test_gpt5_nano_excludes_temperature(self):
         config = build_llm_config("gpt-5-nano", "sk-test")
-        assert "temperature" not in config
+        assert config.temperature is None
 
     @pytest.mark.unit
     def test_custom_temperature(self):
         config = build_llm_config("gpt-4o", "sk-test", temperature=0.7, top_p=0.9)
-        assert config["temperature"] == 0.7
-        assert config["top_p"] == 0.9
+        assert config.temperature == 0.7
+        assert config.top_p == 0.9
+
+    @pytest.mark.unit
+    def test_base_url_default_none(self):
+        config = build_llm_config("gpt-4o", "sk-test")
+        assert config.base_url is None
+
+    @pytest.mark.unit
+    def test_base_url_openrouter(self):
+        config = build_llm_config("openai/gpt-4o", "sk-or-test", base_url="https://openrouter.ai/api/v1")
+        assert config.base_url == "https://openrouter.ai/api/v1"
+        assert config.model == "openai/gpt-4o"
 
 
 # ---------------------------------------------------------------------------
@@ -586,21 +603,16 @@ class TestIsInvalidApiKeyError:
 class TestNegotiationTimingInstrumentation:
     @pytest.mark.unit
     def test_create_chat_populates_timing_buckets(self, monkeypatch):
-        # Arrange fake agents/chat
-        chat = MagicMock()
-        chat.chat_history = [
+        # Arrange: mock engine that returns a ChatResult
+        chat_history = [
             {"name": "BuyerAgent", "content": "BuyerAgent: offer 10"},
             {"name": "SellerAgent", "content": "SellerAgent: accept"},
         ]
+        engine = MagicMock()
+        engine.run_bilateral.return_value = ChatResult(chat_history)
 
-        buyer_agent = MagicMock()
-        buyer_agent.name = "BuyerAgent"
-        buyer_agent.system_message = "buyer prompt"
-        buyer_agent.initiate_chat.return_value = chat
-
-        seller_agent = MagicMock()
-        seller_agent.name = "SellerAgent"
-        seller_agent.system_message = "seller prompt"
+        buyer_agent = GameAgent(name="BuyerAgent", system_message="buyer prompt")
+        seller_agent = GameAgent(name="SellerAgent", system_message="seller prompt")
 
         minimizer_team = {"Name": "ClassT_Group1", "Agent 1": buyer_agent, "Agent 2": seller_agent}
         maximizer_team = {"Name": "ClassT_Group2", "Agent 1": seller_agent, "Agent 2": buyer_agent}
@@ -632,9 +644,10 @@ class TestNegotiationTimingInstrumentation:
             num_turns=5,
             summary_prompt="summarize",
             round_num=1,
-            user=MagicMock(),
+            engine=engine,
             summary_agent=MagicMock(),
             summary_termination_message="The value agreed was",
+            negotiation_termination_message="Pleasure doing business with you",
             timing_totals=timing_totals,
         )
 
@@ -652,21 +665,21 @@ class TestNegotiationTimingInstrumentation:
         monkeypatch.setattr(neg, "berger_schedule", lambda _teams, _rounds: [[("ClassT_Group1", "ClassT_Group2")]])
         monkeypatch.setattr(neg, "insert_round_data", lambda *args, **kwargs: True)
         monkeypatch.setattr(neg, "update_round_data", lambda *args, **kwargs: True)
-        monkeypatch.setattr(neg, "build_summary_agents", lambda *args, **kwargs: (MagicMock(), MagicMock()))
+        monkeypatch.setattr(neg, "build_summary_agent", lambda *args, **kwargs: MagicMock())
 
         team1 = {
             "Name": "ClassT_Group1",
             "Value 1": 20,
             "Value 2": 10,
-            "Agent 1": MagicMock(name="a11"),
-            "Agent 2": MagicMock(name="a12"),
+            "Agent 1": GameAgent(name="a11", system_message="p1"),
+            "Agent 2": GameAgent(name="a12", system_message="p2"),
         }
         team2 = {
             "Name": "ClassT_Group2",
             "Value 1": 19,
             "Value 2": 9,
-            "Agent 1": MagicMock(name="a21"),
-            "Agent 2": MagicMock(name="a22"),
+            "Agent 1": GameAgent(name="a21", system_message="p3"),
+            "Agent 2": GameAgent(name="a22", system_message="p4"),
         }
         monkeypatch.setattr(neg, "create_agents", lambda *args, **kwargs: [team1, team2])
 
@@ -688,7 +701,7 @@ class TestNegotiationTimingInstrumentation:
         # Act
         result = create_chats(
             game_id=1,
-            config_list={},
+            llm_config=LLMConfig(model="test-model", api_key="sk-test"),
             name_roles=["Buyer", "Seller"],
             conversation_order="Buyer",
             teams=[["T", 1], ["T", 2]],

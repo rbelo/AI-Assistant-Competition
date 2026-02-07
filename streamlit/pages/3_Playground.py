@@ -18,7 +18,7 @@ SUMMARY_TERMINATION_MESSAGE = "The value agreed was"
 SUMMARY_PROMPT = "Summarize the negotiation and determine if there was a valid agreement."
 
 try:
-    import autogen
+    from modules.conversation_engine import ConversationEngine, GameAgent
     from modules.database_handler import (
         delete_all_playground_results,
         delete_playground_result,
@@ -30,14 +30,13 @@ try:
         list_user_api_keys,
     )
     from modules.llm_models import MODEL_EXPLANATIONS, MODEL_OPTIONS
-    from modules.negotiation_display import render_chat_summary
     from modules.negotiations_common import (
         build_llm_config,
         compute_deal_scores,
         is_invalid_api_key_error,
-        is_valid_termination,
     )
-    from modules.negotiations_summary import build_summary_agents, evaluate_deal_summary
+    from modules.negotiation_display import render_chat_summary
+    from modules.negotiations_summary import build_summary_agent, evaluate_deal_summary
 except Exception as exc:
     st.title("AI Agent Playground")
     st.error("Playground dependencies failed to load. Please contact the app admin.")
@@ -72,52 +71,34 @@ def run_playground_negotiation(
     conversation_starter=None,
     negotiation_termination_message=NEGOTIATION_TERMINATION_MESSAGE,
 ):
-    # Configure agents
-    config_list = build_llm_config(model, api_key)
+    # Configure engine
+    llm_config = build_llm_config(model, api_key)
+    engine = ConversationEngine(llm_config)
 
-    # Create a closure to capture chat history
-    def create_termination_check(history):
-        return lambda msg: is_valid_termination(msg, history, negotiation_termination_message)
-
-    role1_agent = autogen.ConversableAgent(
+    role1_agent = GameAgent(
         name=f"{role1_name}",
-        llm_config=config_list,
-        human_input_mode="NEVER",
-        chat_messages=None,
         system_message=role1_prompt
         + f" When the negotiation is finished, say {negotiation_termination_message}. This is a short conversation, you will have about {num_turns} opportunities to intervene.",
-        is_termination_msg=create_termination_check([]),
     )
 
-    role2_agent = autogen.ConversableAgent(
+    role2_agent = GameAgent(
         name=f"{role2_name}",
-        llm_config=config_list,
-        human_input_mode="NEVER",
-        chat_messages=None,
         system_message=role2_prompt
         + f" When the negotiation is finished, say {negotiation_termination_message}. This is a short conversation, you will have about {num_turns} opportunities to intervene.",
-        is_termination_msg=create_termination_check([]),
     )
 
-    # Initialize chat
+    # Determine initiator and responder
     initiator = role2_agent if conversation_starter == role2_name else role1_agent
     responder = role1_agent if initiator is role2_agent else role2_agent
-    chat = initiator.initiate_chat(
-        responder,
-        clear_history=True,
-        max_turns=num_turns,
-        message=starting_message,
-    )
 
-    # Update termination checks with actual chat history
-    role1_agent.is_termination_msg = create_termination_check(chat.chat_history)
-    role2_agent.is_termination_msg = create_termination_check(chat.chat_history)
+    termination_fn = lambda msg, history: negotiation_termination_message in msg["content"]
+    chat = engine.run_bilateral(initiator, responder, starting_message, num_turns, termination_fn)
 
     # Process chat history for display
     negotiation_text = ""
-    for i in range(len(chat.chat_history)):
-        clean_msg = clean_agent_message(role1_agent.name, role2_agent.name, chat.chat_history[i]["content"])
-        formatted_msg = chat.chat_history[i]["name"] + ": " + clean_msg + "\n\n"
+    for entry in chat.chat_history:
+        clean_msg = clean_agent_message(role1_agent.name, role2_agent.name, entry["content"])
+        formatted_msg = entry["name"] + ": " + clean_msg + "\n\n"
         negotiation_text += formatted_msg
 
     return negotiation_text, chat.chat_history
@@ -255,18 +236,18 @@ with tab1:
                 summary_text = ""
                 deal_value = None
                 try:
-                    summary_config = build_llm_config(model, resolved_api_key)
-                    user, summary_agent = build_summary_agents(
-                        summary_config,
+                    summary_llm_config = build_llm_config(model, resolved_api_key)
+                    summary_engine = ConversationEngine(summary_llm_config)
+                    summary_agent = build_summary_agent(
                         SUMMARY_TERMINATION_MESSAGE,
                         NEGOTIATION_TERMINATION_MESSAGE,
                         include_summary=True,
                     )
                     summary_text, deal_value = evaluate_deal_summary(
+                        summary_engine,
                         chat_history,
                         SUMMARY_PROMPT,
                         SUMMARY_TERMINATION_MESSAGE,
-                        user,
                         summary_agent,
                         role1_name,
                         role2_name,
