@@ -81,12 +81,12 @@ def render_sidebar(current_page=None):
                 else:
                     st.error("Invalid email or password")
 
+        st.markdown("---")
         if st.session_state.get("authenticated"):
-            st.markdown("---")
             role = "Instructor" if st.session_state.get("instructor") else "Student"
             email = st.session_state.get("login_email", "")
             if email:
                 st.caption(f"{email} • {role}")
             else:
                 st.caption(role)
-            st.caption(f"Version: {get_app_version()}")
+        st.caption(f"Version: {get_app_version()}")
