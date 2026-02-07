@@ -458,6 +458,9 @@ class TestPopulatePlaysTable:
         cursor.fetchall.return_value = []
         with patch.object(dh, "get_connection", return_value=conn):
             assert dh.populate_plays_table(1, "2024", "A") is False
+        conn.commit.assert_called_once()
+        delete_query = cursor.execute.call_args_list[1][0][0]
+        assert "DELETE FROM plays" in delete_query
 
 
 # ---------------------------------------------------------------------------

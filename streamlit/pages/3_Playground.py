@@ -57,7 +57,7 @@ def run_playground_negotiation(
     starting_message,
     num_turns,
     api_key,
-    model="gpt-4o-mini",
+    model="gpt-5-mini",
     conversation_starter=None,
     negotiation_termination_message=NEGOTIATION_TERMINATION_MESSAGE,
 ):
@@ -167,12 +167,10 @@ else:
 
     with tab1:
         st.header("Create New Test Negotiation")
-        model_options = ["gpt-4o-mini", "gpt-4.1-mini", "gpt-5-mini", "gpt-5-nano"]
+        model_options = ["gpt-5-mini", "gpt-5-nano"]
         model_explanations = {
-            "gpt-4o-mini": "Best value for negotiation: fast, low cost, strong dialog quality.",
-            "gpt-4.1-mini": "More consistent reasoning while staying inexpensive.",
-            "gpt-5-mini": "Higher quality reasoning at a moderate cost.",
-            "gpt-5-nano": "Ultra-cheap for large batches; weakest negotiation quality.",
+            "gpt-5-mini": "Recommended default for negotiation quality, consistency, and speed.",
+            "gpt-5-nano": "Lowest-cost option for quick experimentation and batch tests.",
         }
         with st.form(key="playground_form"):
             col1, col2 = st.columns(2)

@@ -1,3 +1,4 @@
+import logging
 import random
 import time
 from datetime import datetime, timedelta
@@ -48,6 +49,8 @@ from st_aggrid import AgGrid, ColumnsAutoSizeMode, GridOptionsBuilder, GridUpdat
 
 import streamlit as st
 
+logger = logging.getLogger(__name__)
+
 # ---------------------------- SET THE DEFAULT SESSION STATE FOR ALL CASES ------------------------------- #
 if "cc_game_creation_in_progress" not in st.session_state:
     st.session_state.cc_game_creation_in_progress = False
@@ -95,9 +98,7 @@ def render_control_center():
         st.success("Game created.")
         st.session_state.cc_game_created = False
 
-    tabs = st.tabs(["Game Overview", "Create Game", "Student Management"])
-
-    with tabs[0]:
+    def _render_game_overview_tab():
         if st.session_state.cc_pending_selected_year:
             st.session_state.cc_selected_year = st.session_state.cc_pending_selected_year
             st.session_state.cc_pending_selected_year = None
@@ -146,9 +147,8 @@ def render_control_center():
         game_key_suffix = str(selected_game["game_id"])
 
         st.subheader(selected_game["game_name"])
-        overview_tabs = st.tabs(["Setup", "Submissions", "Simulation", "Results"])
 
-        with overview_tabs[0]:
+        def _render_setup_tab():
             game_id = selected_game["game_id"]
             game_details = get_game_by_id(game_id)
             if not game_details:
@@ -319,6 +319,7 @@ def render_control_center():
 
                         if not populate_plays_table(game_id, game_academic_year_edit, game_class_edit):
                             st.error("An error occurred while assigning students to the game.")
+                            return
 
                         different_groups_classes = get_group_ids_from_game_id(game_id)
                         if not store_game_parameters(game_id, param1_edit, param2_edit, param3_edit, param4_edit):
@@ -350,6 +351,11 @@ def render_control_center():
                     warning = st.warning("Please fill out all fields before submitting.")
                     time.sleep(1)
                     warning.empty()
+
+        overview_tabs = st.tabs(["Setup", "Submissions", "Simulation", "Results"])
+
+        with overview_tabs[0]:
+            _render_setup_tab()
 
         with overview_tabs[1]:
             game_id = selected_game["game_id"]
@@ -442,14 +448,12 @@ def render_control_center():
                     teams.remove(i)
 
                 simulation_params = get_game_simulation_params(game_id)
-                model_options = ["gpt-4o-mini", "gpt-4.1-mini", "gpt-5-mini", "gpt-5-nano"]
+                model_options = ["gpt-5-mini", "gpt-5-nano"]
                 model_explanations = {
-                    "gpt-4o-mini": "Best value for negotiation: fast, low cost, strong dialog quality.",
-                    "gpt-4.1-mini": "More consistent reasoning while staying inexpensive.",
-                    "gpt-5-mini": "Higher quality reasoning at a moderate cost.",
-                    "gpt-5-nano": "Ultra-cheap for large batches; weakest negotiation quality.",
+                    "gpt-5-mini": "Recommended default for negotiation quality, consistency, and speed.",
+                    "gpt-5-nano": "Lowest-cost option for quick, high-volume simulation runs.",
                 }
-                default_model = simulation_params["model"] if simulation_params else "gpt-4o-mini"
+                default_model = simulation_params["model"] if simulation_params else "gpt-5-mini"
                 default_starting_message = (
                     simulation_params["starting_message"]
                     if simulation_params
@@ -996,7 +1000,11 @@ def render_control_center():
             else:
                 st.write("No chats found.")
 
-    with tabs[1]:
+    def _render_create_game_tab():
+        msg = st.session_state.pop("cc_create_game_message", None)
+        if msg:
+            getattr(st, msg[0])(msg[1])
+
         academic_year_class_combinations = get_academic_year_class_combinations()
         if not academic_year_class_combinations:
             st.error(
@@ -1071,15 +1079,14 @@ def render_control_center():
                 and name_roles_1
                 and name_roles_2
                 and selected_combination
-                and param1
-                and param2
-                and param3
-                and param4
+                and param1 is not None
+                and param2 is not None
+                and param3 is not None
+                and param4 is not None
                 and password
                 and deadline_date
                 and deadline_time
             ):
-                creation_success = False
                 try:
                     user_id = st.session_state.get("user_id")
                     next_game_id = get_next_game_id()
@@ -1104,47 +1111,72 @@ def render_control_center():
                     )
 
                     if not populate_plays_table(next_game_id, game_academic_year, game_class):
-                        st.error("An error occurred while assigning students to the game.")
-                        st.stop()
+                        st.session_state.cc_create_game_message = (
+                            "error",
+                            "An error occurred while assigning students to the game.",
+                        )
+                        st.session_state.cc_game_creation_in_progress = False
+                        st.rerun()
 
                     different_groups_classes = get_group_ids_from_game_id(next_game_id)
                     if different_groups_classes is False:
-                        st.error("An error occurred while retrieving group information.")
-                        st.stop()
+                        st.session_state.cc_create_game_message = (
+                            "error",
+                            "An error occurred while retrieving group information.",
+                        )
+                        st.session_state.cc_game_creation_in_progress = False
+                        st.rerun()
                     elif not different_groups_classes:
-                        st.error("No eligible students found for this game.")
-                        st.stop()
+                        st.session_state.cc_create_game_message = (
+                            "error",
+                            "No eligible students found for this game.",
+                        )
+                        st.session_state.cc_game_creation_in_progress = False
+                        st.rerun()
 
                     if not store_game_parameters(next_game_id, param1, param2, param3, param4):
-                        st.error("Failed to store game parameters.")
-                        st.stop()
+                        st.session_state.cc_create_game_message = (
+                            "error",
+                            "Failed to store game parameters.",
+                        )
+                        st.session_state.cc_game_creation_in_progress = False
+                        st.rerun()
 
                     for i in different_groups_classes:
                         buy_value = int(random.uniform(param1, param2))
                         sell_value = int(random.uniform(param3, param4))
                         if not store_group_values(next_game_id, i[0], i[1], buy_value, sell_value):
-                            st.error(f"Failed to store values for group {i[0]}-{i[1]}.")
-                            st.stop()
+                            st.session_state.cc_create_game_message = (
+                                "error",
+                                f"Failed to store values for group {i[0]}-{i[1]}.",
+                            )
+                            st.session_state.cc_game_creation_in_progress = False
+                            st.rerun()
 
-                    creation_success = True
-                except Exception:
-                    st.error("An error occurred. Please try again.")
-                finally:
-                    st.session_state.cc_game_creation_in_progress = False
-
-                if creation_success:
                     st.session_state.cc_game_created = True
                     st.session_state.cc_pending_selected_year = game_academic_year
                     if game_class != "_":
                         st.session_state.cc_pending_selected_game = f"{game_name} - Class {game_class}"
                     else:
                         st.session_state.cc_pending_selected_game = game_name
-                    st.rerun()
+                except Exception as e:
+                    logger.exception("Game creation failed")
+                    st.session_state.cc_create_game_message = (
+                        "error",
+                        f"Game creation failed: {e}",
+                    )
+                finally:
+                    st.session_state.cc_game_creation_in_progress = False
+                st.rerun()
             else:
-                st.warning("Please fill out all fields before submitting.")
+                st.session_state.cc_create_game_message = (
+                    "warning",
+                    "Please fill out all fields before submitting.",
+                )
                 st.session_state.cc_game_creation_in_progress = False
+                st.rerun()
 
-    with tabs[2]:
+    def _render_student_management_tab():
         st.subheader("Student Management")
 
         def show_cc_student_table():
@@ -1267,6 +1299,17 @@ def render_control_center():
                     st.warning("Please select a student to remove.")
             st.session_state.cc_remove_student = False
             st.rerun()
+
+    tabs = st.tabs(["Game Overview", "Create Game", "Student Management"])
+
+    with tabs[0]:
+        _render_game_overview_tab()
+
+    with tabs[1]:
+        _render_create_game_tab()
+
+    with tabs[2]:
+        _render_student_management_tab()
 
 
 # -------------------------------------------------------------------------------------------------------- #

@@ -4,7 +4,7 @@ This guide walks you through testing the negotiation simulation system manually 
 
 ## Prerequisites
 
-1. **OpenAI API Key** - You need a valid OpenAI API key with access to GPT-4o or GPT-4o-mini
+1. **OpenAI API Key** - You need a valid OpenAI API key with access to GPT-5 mini or GPT-5 nano
 2. **Application Running** - Start the app with `make run` or `cd streamlit && streamlit run 0_Home.py`
 3. **Instructor Account** - Log in as an instructor to access the Control Panel
 
@@ -118,7 +118,7 @@ The file content should be:
 | Parameter | Value |
 |-----------|-------|
 | API Key | [Your OpenAI API key] |
-| Model | gpt-4o-mini |
+| Model | gpt-5-mini |
 | Number of Rounds | 1 |
 | Conversation Starter | Buyer → Seller |
 | Starting Message | Hello, shall we start the negotiation? |
@@ -172,7 +172,7 @@ The file content should be:
 ### API errors during simulation
 - Verify your OpenAI API key is valid
 - Ensure you have sufficient credits/quota
-- Try using gpt-4o-mini which is cheaper and faster
+- Try using gpt-5-nano which is cheaper and faster
 
 ### No chat transcripts showing
 - Check Google Drive for files starting with `Game{id}_Round`
@@ -186,7 +186,7 @@ The file content should be:
 
 | Parameter | Recommended Value |
 |-----------|-------------------|
-| Model | gpt-4o-mini (faster, cheaper) |
+| Model | gpt-5-nano (faster, cheaper) |
 | Rounds | 1 (for quick testing) |
 | Max Turns | 10 |
 | Starter | Buyer → Seller |

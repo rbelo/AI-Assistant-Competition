@@ -4,11 +4,28 @@
 # This project uses 'uv' for fast dependency management.
 # All commands work without manually activating the virtual environment.
 
-.PHONY: help install install-dev test test-unit test-e2e test-integration test-cov lint lint-fix format check run run-dev stop db-up db-down db-psql reset-local-db reset-remote-db test-remote-db-connection clean venv
+.PHONY: help install install-dev test test-unit test-e2e test-integration test-cov lint lint-fix format check run run-dev stop db-up db-down db-psql reset-local-db reset-production-db test-production-db-connection reset-staging-db test-staging-db-connection sync-production-to-staging reset-remote-db test-remote-db-connection clean venv
+
+# Auto-load local environment variables (gitignored) when present.
+# Command-line vars still take precedence (e.g., ALLOW_PRODUCTION_RESET=1 make ...).
+ifneq (,$(wildcard .env))
+include .env
+export
+endif
 
 BREW_PSQL ?= $(shell brew --prefix postgresql@15 2>/dev/null)/bin/psql
 SECRETS_TOML ?= streamlit/.streamlit/secrets.toml
-SECRETS_DB_URL := $(shell awk -F' *= *' '/^\[database\]/{section=1; next} /^\[/{section=0} section && $$1=="url" {gsub(/"/,"",$$2); print $$2; exit}' $(SECRETS_TOML) 2>/dev/null)
+SECRETS_PRODUCTION_DB_URL := $(shell awk -F' *= *' '/^\[database\]/{section=1; next} /^\[/{section=0} section && $$1=="url" {gsub(/"/,"",$$2); print $$2; exit}' $(SECRETS_TOML) 2>/dev/null)
+SECRETS_STAGING_DB_URL := $(shell awk -F' *= *' '/^\[database_staging\]/{section=1; next} /^\[/{section=0} section && $$1=="url" {gsub(/"/,"",$$2); print $$2; exit}' $(SECRETS_TOML) 2>/dev/null)
+
+# Normalize .env quoted values: VAR="value" -> value
+PRODUCTION_DATABASE_URL_CLEAN := $(patsubst "%",%,$(PRODUCTION_DATABASE_URL))
+STAGING_DATABASE_URL_CLEAN := $(patsubst "%",%,$(STAGING_DATABASE_URL))
+ADMIN_EMAIL_CLEAN := $(patsubst "%",%,$(ADMIN_EMAIL))
+ADMIN_PASSWORD_HASH_CLEAN := $(patsubst "%",%,$(ADMIN_PASSWORD_HASH))
+
+PRODUCTION_DB_URL := $(if $(PRODUCTION_DATABASE_URL_CLEAN),$(PRODUCTION_DATABASE_URL_CLEAN),$(SECRETS_PRODUCTION_DB_URL))
+STAGING_DB_URL := $(if $(STAGING_DATABASE_URL_CLEAN),$(STAGING_DATABASE_URL_CLEAN),$(SECRETS_STAGING_DB_URL))
 
 # Default target
 help:
@@ -42,8 +59,13 @@ help:
 	@echo "  make db-down       Stop local Postgres"
 	@echo "  make db-psql       Open psql shell for the local database"
 	@echo "  make reset-local-db  Reset schema and seed data in local Postgres"
-	@echo "  make reset-remote-db Reset schema and seed data in remote Postgres (uses REMOTE_DATABASE_URL or secrets.toml)"
-	@echo "  make test-remote-db-connection  Test remote DB connection (uses REMOTE_DATABASE_URL or secrets.toml)"
+	@echo "  make test-production-db-connection  Test production DB connection (uses PRODUCTION_DATABASE_URL or [database].url)"
+	@echo "  make test-staging-db-connection  Test staging DB connection (uses STAGING_DATABASE_URL or [database_staging].url)"
+	@echo "  make reset-staging-db  Reset schema and seed data in staging Postgres"
+	@echo "  make reset-production-db  Reset production DB (requires ALLOW_PRODUCTION_RESET=1, ADMIN_EMAIL, ADMIN_PASSWORD_HASH)"
+	@echo "  make sync-production-to-staging  Clone production public schema+data into staging (blocked unless CONFIRM_SYNC=I_UNDERSTAND)"
+	@echo "  make test-remote-db-connection  Alias for test-production-db-connection"
+	@echo "  make reset-remote-db  Alias for reset-production-db"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  make clean         Remove cache and build artifacts"
@@ -132,17 +154,53 @@ reset-local-db:
 	@psql "postgresql:///ai_assistant_competition" -v ON_ERROR_STOP=1 -f database/Populate_Tables_AI_Negotiator.sql
 	@echo "Database reset complete."
 
-reset-remote-db:
-	@test -n "$(REMOTE_DATABASE_URL)" || test -n "$(SECRETS_DB_URL)" || (echo "REMOTE_DATABASE_URL is required (or set database.url in $(SECRETS_TOML))" && exit 1)
-	@psql "$(if $(REMOTE_DATABASE_URL),$(REMOTE_DATABASE_URL),$(SECRETS_DB_URL))" -v ON_ERROR_STOP=1 -c "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO CURRENT_USER; GRANT ALL ON SCHEMA public TO public;"
-	@psql "$(if $(REMOTE_DATABASE_URL),$(REMOTE_DATABASE_URL),$(SECRETS_DB_URL))" -v ON_ERROR_STOP=1 -f database/Tables_AI_Negotiator.sql
-	@psql "$(if $(REMOTE_DATABASE_URL),$(REMOTE_DATABASE_URL),$(SECRETS_DB_URL))" -v ON_ERROR_STOP=1 -f database/Populate_Tables_AI_Negotiator.sql
-	@echo "Database reset complete."
+reset-production-db:
+	@test "$(ALLOW_PRODUCTION_RESET)" = "1" || (echo "Refusing to reset production DB. Re-run with ALLOW_PRODUCTION_RESET=1 if you are absolutely sure." && exit 1)
+	@test -n "$(PRODUCTION_DB_URL)" || (echo "PRODUCTION_DATABASE_URL is required (or set [database].url in $(SECRETS_TOML))" && exit 1)
+	@test -n "$(ADMIN_EMAIL_CLEAN)" || (echo "ADMIN_EMAIL is required for minimal seed." && exit 1)
+	@test -n "$(ADMIN_PASSWORD_HASH_CLEAN)" || (echo "ADMIN_PASSWORD_HASH is required for minimal seed." && exit 1)
+	@psql "$(PRODUCTION_DB_URL)" -v ON_ERROR_STOP=1 -c "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO CURRENT_USER; GRANT ALL ON SCHEMA public TO public;"
+	@psql "$(PRODUCTION_DB_URL)" -v ON_ERROR_STOP=1 -f database/Tables_AI_Negotiator.sql
+	@psql "$(PRODUCTION_DB_URL)" -v ON_ERROR_STOP=1 \
+		-v admin_email="$(ADMIN_EMAIL_CLEAN)" \
+		-v admin_password_hash="$(ADMIN_PASSWORD_HASH_CLEAN)" \
+		-f database/Populate_Tables_AI_Negotiator_Minimal.sql
+	@echo "Production database reset complete."
 
-test-remote-db-connection:
-	@test -n "$(REMOTE_DATABASE_URL)" || test -n "$(SECRETS_DB_URL)" || (echo "REMOTE_DATABASE_URL is required (or set database.url in $(SECRETS_TOML))" && exit 1)
-	@psql "$(if $(REMOTE_DATABASE_URL),$(REMOTE_DATABASE_URL),$(SECRETS_DB_URL))" -v ON_ERROR_STOP=1 -c "SELECT 1;" >/dev/null
-	@echo "Remote database connection OK."
+test-production-db-connection:
+	@test -n "$(PRODUCTION_DB_URL)" || (echo "PRODUCTION_DATABASE_URL is required (or set [database].url in $(SECRETS_TOML))" && exit 1)
+	@psql "$(PRODUCTION_DB_URL)" -v ON_ERROR_STOP=1 -c "SELECT 1;" >/dev/null
+	@echo "Production database connection OK."
+
+reset-staging-db:
+	@test -n "$(STAGING_DB_URL)" || (echo "STAGING_DATABASE_URL is required (or set [database_staging].url in $(SECRETS_TOML))" && exit 1)
+	@test -n "$(ADMIN_EMAIL_CLEAN)" || (echo "ADMIN_EMAIL is required for minimal seed." && exit 1)
+	@test -n "$(ADMIN_PASSWORD_HASH_CLEAN)" || (echo "ADMIN_PASSWORD_HASH is required for minimal seed." && exit 1)
+	@psql "$(STAGING_DB_URL)" -v ON_ERROR_STOP=1 -c "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO CURRENT_USER; GRANT ALL ON SCHEMA public TO public;"
+	@psql "$(STAGING_DB_URL)" -v ON_ERROR_STOP=1 -f database/Tables_AI_Negotiator.sql
+	@psql "$(STAGING_DB_URL)" -v ON_ERROR_STOP=1 \
+		-v admin_email="$(ADMIN_EMAIL_CLEAN)" \
+		-v admin_password_hash="$(ADMIN_PASSWORD_HASH_CLEAN)" \
+		-f database/Populate_Tables_AI_Negotiator_Minimal.sql
+	@echo "Staging database reset complete."
+
+test-staging-db-connection:
+	@test -n "$(STAGING_DB_URL)" || (echo "STAGING_DATABASE_URL is required (or set [database_staging].url in $(SECRETS_TOML))" && exit 1)
+	@psql "$(STAGING_DB_URL)" -v ON_ERROR_STOP=1 -c "SELECT 1;" >/dev/null
+	@echo "Staging database connection OK."
+
+sync-production-to-staging:
+	@test "$(CONFIRM_SYNC)" = "I_UNDERSTAND" || (echo "Refusing to sync production into staging. Re-run with CONFIRM_SYNC=I_UNDERSTAND." && exit 1)
+	@test -n "$(PRODUCTION_DB_URL)" || (echo "PRODUCTION_DATABASE_URL is required (or set [database].url in $(SECRETS_TOML))" && exit 1)
+	@test -n "$(STAGING_DB_URL)" || (echo "STAGING_DATABASE_URL is required (or set [database_staging].url in $(SECRETS_TOML))" && exit 1)
+	@psql "$(STAGING_DB_URL)" -v ON_ERROR_STOP=1 -c "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO CURRENT_USER; GRANT ALL ON SCHEMA public TO public;"
+	@pg_dump "$(PRODUCTION_DB_URL)" --schema=public --no-owner --no-privileges --format=plain | psql "$(STAGING_DB_URL)" -v ON_ERROR_STOP=1
+	@echo "Production public schema and data copied to staging."
+
+# Backward-compatible aliases (deprecated)
+reset-remote-db: reset-production-db
+
+test-remote-db-connection: test-production-db-connection
 
 # Maintenance
 clean:

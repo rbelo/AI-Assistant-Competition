@@ -133,3 +133,18 @@ class TestBergerSchedule:
         # With 10 teams, each round should have 5 matches
         for round_matches in schedule:
             assert len(round_matches) == 5
+
+    @pytest.mark.unit
+    def test_does_not_mutate_input_teams(self):
+        """Ensure schedule generation does not mutate the input team list."""
+        teams = ["A", "B", "C"]
+        original = teams.copy()
+        _ = berger_schedule(teams, num_rounds=3)
+
+        assert teams == original
+
+    @pytest.mark.unit
+    def test_zero_rounds_returns_empty_schedule(self):
+        """Zero or negative rounds should return an empty schedule."""
+        teams = ["A", "B", "C", "D"]
+        assert berger_schedule(teams, num_rounds=0) == []

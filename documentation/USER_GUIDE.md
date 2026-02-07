@@ -118,7 +118,7 @@ The Playground lets you test your negotiation strategies before submitting them 
    - Write prompts for both roles
    - Choose number of turns (5-30)
    - Set starting message
-   - Select model (gpt-4o-mini or gpt-4o)
+   - Select model (gpt-5-mini or gpt-5-nano)
    - Enter your OpenAI API key
 
 ---

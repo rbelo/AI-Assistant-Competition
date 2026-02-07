@@ -368,7 +368,7 @@ Next Steps:
    - Game: {TEST_CONFIG['game']['name']} - Class {TEST_CONFIG['class']}
 5. Fill in simulation parameters:
    - API Key: [Your OpenAI API key]
-   - Model: gpt-4o-mini
+   - Model: gpt-5-mini
    - Number of Rounds: 1
    - Conversation Starter: {TEST_CONFIG['game']['minimizer_role']} -> {TEST_CONFIG['game']['maximizer_role']}
    - Starting Message: "Hello, shall we start the negotiation?"

@@ -431,12 +431,7 @@ def create_agents(game_id, teams, values, name_roles, config_list, negotiation_t
 
     role_1, role_2 = name_roles[0].replace(" ", ""), name_roles[1].replace(" ", "")
 
-    if config_list["config_list"][0]["model"] == "gpt-4o-mini":
-        words = 50
-    elif config_list["config_list"][0]["model"] == "gpt-4o":
-        words = 50
-    else:
-        words = 50
+    words = 50
 
     for team in teams:
         try:

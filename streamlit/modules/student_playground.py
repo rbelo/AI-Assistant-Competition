@@ -46,7 +46,7 @@ def run_playground_negotiation(
     starting_message,
     num_turns,
     api_key,
-    model="gpt-4o-mini",
+    model="gpt-5-mini",
     conversation_starter=None,
     negotiation_termination_message="Pleasure doing business with you",
 ):
@@ -139,12 +139,10 @@ def display_student_playground():
     with tab1:
         st.header("Create New Test Negotiation")
 
-        model_options = ["gpt-4o-mini", "gpt-4.1-mini", "gpt-5-mini", "gpt-5-nano"]
+        model_options = ["gpt-5-mini", "gpt-5-nano"]
         model_explanations = {
-            "gpt-4o-mini": "Best value for negotiation: fast, low cost, strong dialog quality.",
-            "gpt-4.1-mini": "More consistent reasoning while staying inexpensive.",
-            "gpt-5-mini": "Higher quality reasoning at a moderate cost.",
-            "gpt-5-nano": "Ultra-cheap for large batches; weakest negotiation quality.",
+            "gpt-5-mini": "Recommended default for negotiation quality, consistency, and speed.",
+            "gpt-5-nano": "Lowest-cost option for quick experimentation and batch tests.",
         }
         with st.form(key="playground_form"):
             col1, col2 = st.columns(2)
@@ -195,42 +193,41 @@ def display_student_playground():
         if submit_button:
             if not api_key:
                 st.error("Please provide an OpenAI API key to run the negotiation")
-                return
-
-            with st.spinner("Running negotiation test..."):
-                try:
-                    negotiation_text, chat_history = run_playground_negotiation(
-                        role1_prompt,
-                        role2_prompt,
-                        role1_name,
-                        role2_name,
-                        starting_message,
-                        num_turns,
-                        api_key,
-                        model,
-                        conversation_starter.split(" ➡ ")[0].strip(),
-                    )
-
-                    # Display results
-                    st.success("Test negotiation completed.")
-                    st.subheader("Negotiation Results")
-                    st.text_area("Negotiation Transcript", negotiation_text, height=400)
-
-                    # Save results if requested
-                    if save_results:
-                        result_id = save_playground_results(
-                            user_id, class_, group_id, role1_name, role2_name, negotiation_text, model=model
+            else:
+                with st.spinner("Running negotiation test..."):
+                    try:
+                        negotiation_text, chat_history = run_playground_negotiation(
+                            role1_prompt,
+                            role2_prompt,
+                            role1_name,
+                            role2_name,
+                            starting_message,
+                            num_turns,
+                            api_key,
+                            model,
+                            conversation_starter.split(" ➡ ")[0].strip(),
                         )
-                        if result_id:
-                            st.success("Results saved.")
-                        else:
-                            st.error("Failed to save results.")
 
-                except Exception as e:
-                    if is_invalid_api_key_error(e):
-                        st.error("Your API key appears invalid or unauthorized. Update it and try again.")
-                    else:
-                        st.error(f"An error occurred during the negotiation: {str(e)}")
+                        # Display results
+                        st.success("Test negotiation completed.")
+                        st.subheader("Negotiation Results")
+                        st.text_area("Negotiation Transcript", negotiation_text, height=400)
+
+                        # Save results if requested
+                        if save_results:
+                            result_id = save_playground_results(
+                                user_id, class_, group_id, role1_name, role2_name, negotiation_text, model=model
+                            )
+                            if result_id:
+                                st.success("Results saved.")
+                            else:
+                                st.error("Failed to save results.")
+
+                    except Exception as e:
+                        if is_invalid_api_key_error(e):
+                            st.error("Your API key appears invalid or unauthorized. Update it and try again.")
+                        else:
+                            st.error(f"An error occurred during the negotiation: {str(e)}")
 
     with tab2:
         st.header("My Previous Tests")

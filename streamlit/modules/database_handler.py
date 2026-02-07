@@ -1,3 +1,4 @@
+import logging
 import os
 
 import pandas as pd
@@ -9,6 +10,7 @@ import streamlit as st
 
 app = Flask(__name__)
 app.secret_key = "key"
+logger = logging.getLogger(__name__)
 
 
 # Helper to get the database connection string at runtime
@@ -66,13 +68,20 @@ def get_connection():
         # Verify connection is still alive
         if conn and not conn.closed:
             try:
-                conn.cursor().execute("SELECT 1")
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1")
                 return conn
-            except psycopg2.OperationalError:
+            except (psycopg2.OperationalError, psycopg2.InterfaceError):
                 # Connection died, clear cache and get new one
                 if hasattr(st, "cache_resource"):
                     st.cache_resource.clear()
                 return _get_cached_connection()
+
+        # Force a reconnection when cached connection exists but is closed
+        if conn and conn.closed and hasattr(st, "cache_resource"):
+            st.cache_resource.clear()
+            return _get_cached_connection()
+
         return conn
     except Exception:
         # Fallback for non-Streamlit context (tests, scripts)
@@ -108,29 +117,36 @@ def populate_plays_table(game_id, game_academic_year, game_class):
 
             students = cur.fetchall()
 
-            if students:
+            # Always clear previous assignments first so game edits cannot retain stale players.
+            query = """
+                DELETE FROM plays
+                WHERE game_id = %s;
+            """
+            cur.execute(query, (game_id,))
 
-                # Delete existing rows in the 'plays' table for the given game_id
-                query = """
-                    DELETE FROM plays
-                    WHERE game_id = %s;
-                """
-                cur.execute(query, (game_id,))
-
-                # Insert eligible students into 'plays' table
-                query = """
-                    INSERT INTO plays (user_id, game_id)
-                    VALUES (%(param1)s, %(param2)s);
-                """
-                for student in students:
-                    cur.execute(query, {"param1": student[0], "param2": game_id})
-
+            if not students:
+                logger.warning(
+                    "No students found for game %s (year=%s, class=%s)",
+                    game_id,
+                    game_academic_year,
+                    game_class,
+                )
                 conn.commit()
-                return True
+                return False
 
-            return False
+            # Insert eligible students into 'plays' table
+            query = """
+                INSERT INTO plays (user_id, game_id)
+                VALUES (%(param1)s, %(param2)s);
+            """
+            for student in students:
+                cur.execute(query, {"param1": student[0], "param2": game_id})
+
+            conn.commit()
+            return True
 
     except Exception:
+        logger.exception("populate_plays_table failed for game %s", game_id)
         conn.rollback()
         return False
 
@@ -269,13 +285,21 @@ def fetch_current_games_data_by_user_id(sign, user_id):
         return []
     try:
         with conn.cursor() as cur:
+            operator_by_sign = {
+                "<": "<",
+                ">": ">",
+            }
+            operator = operator_by_sign.get(sign)
+            if not operator:
+                logger.warning("Invalid sign passed to fetch_current_games_data_by_user_id: %s", sign)
+                return []
 
             query = f"""
                 SELECT *
                 FROM game g JOIN plays p
                     ON g.game_id = p.game_id
                 WHERE (p.user_id =  %(param1)s
-                AND CURRENT_TIMESTAMP {sign} g.timestamp_submission_deadline)
+                AND CURRENT_TIMESTAMP {operator} g.timestamp_submission_deadline)
                 ORDER BY g.game_id DESC; """
 
             cur.execute(query, {"param1": user_id})

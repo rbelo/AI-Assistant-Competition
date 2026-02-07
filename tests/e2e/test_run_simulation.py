@@ -82,11 +82,11 @@ class TestRunSimulation:
         api_key_select.locator("div[data-baseweb='select']").click()
         page.get_by_role("option", name="E2E Key").click()
 
-        # Model - use gpt-4o-mini for lower cost and faster response
-        # The selectbox should default to gpt-4o-mini, but let's ensure
+        # Model - use gpt-5-nano for lower cost and faster response
+        # The selectbox defaults to gpt-5-mini, but choose nano for speed/cost in E2E
         model_select = page.locator("[data-testid='stSelectbox']").filter(has_text="OpenAI Model")
         model_select.locator("div[data-baseweb='select']").click()
-        page.get_by_role("option", name="gpt-4o-mini").click()
+        page.get_by_role("option", name="gpt-5-nano").click()
 
         # Number of Rounds - use 1 for speed
         rounds_input = page.get_by_label("Number of Rounds")

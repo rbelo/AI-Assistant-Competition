@@ -202,3 +202,64 @@ class TestStudentPromptStorage:
             result = database_handler.get_student_prompt(game_id=999, class_="X", group_id=1)
 
         assert result is None
+
+
+class TestDatabaseConnectionAndQuerySafety:
+    @pytest.mark.unit
+    def test_get_connection_reopens_when_cached_conn_is_closed(self, real_database_handler):
+        """Closed cached connections should be replaced with a fresh connection."""
+        database_handler, _ = real_database_handler
+        closed_conn = MagicMock()
+        closed_conn.closed = 1
+        fresh_conn = MagicMock()
+        fresh_conn.closed = 0
+        cache_resource_mock = MagicMock()
+
+        with (
+            patch.object(database_handler, "_get_cached_connection", side_effect=[closed_conn, fresh_conn]),
+            patch.object(database_handler.st, "cache_resource", cache_resource_mock, create=True),
+        ):
+            result = database_handler.get_connection()
+
+        assert result is fresh_conn
+        cache_resource_mock.clear.assert_called_once()
+
+    @pytest.mark.unit
+    def test_fetch_current_games_rejects_invalid_operator(self, real_database_handler):
+        """Invalid operators should not execute SQL and should return empty data."""
+        database_handler, _ = real_database_handler
+        mock_cursor = MagicMock()
+        mock_cursor.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_cursor.__exit__ = MagicMock(return_value=False)
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+
+        with (
+            patch.object(database_handler, "get_connection", return_value=mock_conn),
+            patch.object(database_handler.logger, "warning") as warning_mock,
+        ):
+            result = database_handler.fetch_current_games_data_by_user_id("!=", "student1")
+
+        assert result == []
+        assert not mock_cursor.execute.called
+        warning_mock.assert_called_once()
+
+    @pytest.mark.unit
+    def test_fetch_current_games_uses_allowed_operator(self, real_database_handler):
+        """Allowed operators should be interpolated and query executed."""
+        database_handler, _ = real_database_handler
+        mock_cursor = MagicMock()
+        mock_cursor.__enter__ = MagicMock(return_value=mock_cursor)
+        mock_cursor.__exit__ = MagicMock(return_value=False)
+        mock_cursor.fetchall.return_value = []
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+
+        with patch.object(database_handler, "get_connection", return_value=mock_conn):
+            result = database_handler.fetch_current_games_data_by_user_id("<", "student1")
+
+        assert result == []
+        assert mock_cursor.execute.called
+        query, params = mock_cursor.execute.call_args[0]
+        assert "CURRENT_TIMESTAMP < g.timestamp_submission_deadline" in query
+        assert params["param1"] == "student1"
