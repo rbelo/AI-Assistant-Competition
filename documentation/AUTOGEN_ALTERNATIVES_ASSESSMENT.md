@@ -7,11 +7,14 @@ away from Microsoft AutoGen to an alternative multi-agent framework. The assessm
 covers the current AutoGen integration surface, known risks, candidate alternatives,
 and a recommendation.
 
-**Recommendation:** The project should consider migrating away from AutoGen. The
-framework is entering maintenance mode as Microsoft merges it into the Microsoft Agent
-Framework (GA targeted Q1 2026), the package ecosystem has been fragmented and
-confusing (`autogen` vs `pyautogen` vs `ag2`), and the project's actual usage of
-AutoGen is narrow enough that migration would be straightforward.
+**Recommendation:** The project should migrate away from AutoGen to direct OpenAI API
+calls with a game-aware abstraction layer. The framework is entering maintenance mode
+as Microsoft merges it into the Microsoft Agent Framework (GA targeted Q1 2026), the
+package ecosystem is fragmented (`autogen` vs `pyautogen` vs `ag2`), and the project's
+usage is narrow enough that migration would be straightforward. Critically, future game
+types (prisoner's dilemma, multi-party negotiations, auctions) do **not** require a
+multi-agent framework — they are better served by a clean `ConversationEngine` +
+`GameRunner` architecture built on direct API calls.
 
 ---
 
@@ -282,9 +285,193 @@ remain unaffected. Integration tests that mock AutoGen agents would need updatin
 
 ---
 
-## 6. Recommendation
+## 6. Future Game Scenarios: Impact on Framework Choice
 
-**Migrate to direct OpenAI API calls.** The rationale:
+The current platform only implements zero-sum bilateral negotiation. However, the
+database already has scaffolding for a prisoner's dilemma mode (`prisoners_dilemma_config`
+table, `game_modes` table, UI stubs in `game_modes.py`), and there is clear educational
+value in expanding the game repertoire. This section analyzes how future game types
+would affect the framework decision.
+
+### 6.1 Prisoner's Dilemma (Iterated)
+
+**What it requires:**
+- Two agents play repeated rounds of cooperate/defect
+- Each agent sees the history of prior rounds and chooses simultaneously
+- A payoff matrix determines scores (already stored as JSONB in `prisoners_dilemma_config`)
+- Agents may communicate before deciding (cheap talk) or decide silently
+
+**Architectural patterns:**
+
+| Variant | Conversation Pattern | Framework Needs |
+|---------|---------------------|-----------------|
+| **Silent PD** (no communication) | Each agent submits a decision per round independently; no dialogue | Simple: two parallel API calls per round, no conversation at all |
+| **Cheap-talk PD** | Agents discuss, then each privately submits a decision | Two-phase per round: (1) conversation loop, (2) independent decision calls |
+| **Iterated PD with memory** | Same as above but across N rounds with cumulative history | State management across rounds; growing context windows |
+
+**Framework implications:**
+- **Direct OpenAI API** handles all variants easily. Silent PD is trivial (parallel
+  completions). Cheap-talk PD reuses the same conversation loop from zero-sum. The
+  private decision step is just a separate API call with a constrained prompt
+  ("respond with COOPERATE or DEFECT"). Iteration is a for-loop with accumulated state.
+- **AutoGen** adds no value here. The `initiate_chat` abstraction doesn't support the
+  "converse then decide privately" split, so you'd fight the framework.
+- **LangGraph** could model the cooperate/talk/decide phases as graph nodes, but this
+  is unnecessary complexity for what is fundamentally a loop.
+
+### 6.2 Multi-Party Negotiation (3+ Agents)
+
+**What it requires:**
+- Three or more agents negotiate simultaneously (e.g., trade deals, coalition
+  formation, resource allocation)
+- Turn-taking protocol: round-robin, free-for-all, or structured proposal/response
+- Possible side conversations (bilateral within multi-party)
+- Coalition dynamics — subgroups may form alliances
+
+**Architectural patterns:**
+
+| Variant | Conversation Pattern | Framework Needs |
+|---------|---------------------|-----------------|
+| **Round-robin multilateral** | Agents take turns addressing the group (like a meeting) | Single shared message history, each agent responds in turn |
+| **Hub-and-spoke** | A mediator agent coordinates, agents respond to mediator | Star topology: mediator ↔ each agent; mediator synthesizes |
+| **Free-form with side channels** | Agents can address specific others or the group | Multiple concurrent conversation threads; routing logic |
+| **Coalition formation** | Agents negotiate in subgroups, then present joint positions | Dynamic group composition; subgroup conversations |
+
+**Framework implications:**
+- **Direct OpenAI API** handles round-robin multilateral cleanly: maintain one message
+  list, cycle through agents, each sees the full history. Hub-and-spoke is also
+  straightforward. Free-form with side channels requires more bookkeeping (multiple
+  conversation threads with routing) but is entirely doable — it's just data structures.
+  Estimated additional complexity: ~100-150 lines for a flexible multi-party engine.
+- **AutoGen's GroupChat** is designed exactly for multi-party scenarios — it manages
+  speaker selection, shared history, and turn-taking. However, it assumes a specific
+  conversation pattern (all agents share one history, a "manager" selects speakers).
+  Side channels and coalition subgroups don't map cleanly to GroupChat.
+- **LangGraph** becomes more compelling here. Multi-party negotiations with branching
+  (side channels, coalitions) map well to a graph where nodes are conversation
+  states and edges are transitions. However, this is still premature unless the project
+  actually builds free-form multi-party games.
+- **CrewAI** handles role-based multi-agent teams naturally. Its delegation and
+  collaboration patterns are a reasonable fit for coalition games.
+
+### 6.3 Auction / Bidding Games
+
+**What it requires:**
+- Multiple agents submit bids (sealed or open)
+- An auctioneer mechanism determines winners and prices
+- Strategies evolve across rounds (e.g., ascending, descending, Vickrey auctions)
+
+**Framework implications:**
+- Mostly a **game-engine problem**, not an agent-framework problem. The auctioneer
+  is deterministic logic, not an LLM. Each agent makes independent decisions given
+  the auction state. Direct API calls are the natural fit — call each agent once per
+  round with the current state.
+
+### 6.4 Diplomacy / Complex Multi-Phase Games
+
+**What it requires:**
+- Multiple phases per turn (negotiate → commit → resolve)
+- Private and public channels
+- Binding/non-binding commitments
+- Long-term strategy across many rounds
+
+**Framework implications:**
+- This is the most complex scenario and the only one where a framework arguably helps.
+  Direct API calls still work but require careful state management.
+- LangGraph's state machine model is well-suited for phase transitions.
+- However, this type of game is far beyond the current project scope (university
+  course platform for teaching negotiation basics).
+
+### 6.5 Summary: Do Future Needs Change the Recommendation?
+
+| Game Type | Direct OpenAI API | AutoGen | LangGraph | CrewAI |
+|-----------|:---:|:---:|:---:|:---:|
+| Zero-sum bilateral (current) | Easy | Overkill | Overkill | Overkill |
+| Prisoner's dilemma (silent) | Trivial | Poor fit | Overkill | Overkill |
+| Prisoner's dilemma (cheap-talk) | Easy | OK fit | Overkill | Overkill |
+| Multi-party round-robin | Easy | Good fit (GroupChat) | Good fit | Good fit |
+| Multi-party with side channels | Moderate (~150 LOC) | Poor fit | Good fit | Moderate |
+| Auctions | Easy | Poor fit | Unnecessary | Unnecessary |
+| Complex diplomacy games | Moderate-Hard | Moderate | Good fit | Moderate |
+
+**Key insight:** The only scenario where a framework provides meaningful value over
+direct API calls is **multi-party negotiation with complex routing** (side channels,
+coalitions, dynamic group composition). Even then, the framework buys convenience, not
+capability — all patterns are implementable with direct API calls.
+
+**Updated recommendation:** The direct OpenAI API approach remains the best choice.
+Here's why:
+
+1. **Prisoner's dilemma is simpler than the current game.** It needs less agent
+   orchestration, not more. AutoGen's `initiate_chat` is actually a poor fit for the
+   "talk then decide privately" pattern.
+
+2. **Multi-party round-robin is a modest extension.** Instead of alternating between 2
+   agents, cycle through N agents on a shared history. This is a small change to the
+   conversation loop (~20 additional lines), not a reason to adopt a framework.
+
+3. **The framework only helps at the "complex diplomacy" level,** which is well beyond
+   the educational scope of this platform. If that scenario materializes, adopting
+   LangGraph at that point would be straightforward — the direct-API abstraction layer
+   translates cleanly to graph nodes.
+
+4. **Building on direct API calls creates a better teaching platform.** Students and
+   contributors can understand and debug the negotiation engine without learning a
+   third-party framework's abstractions.
+
+### 6.6 Recommended Architecture for Multi-Game Support
+
+To support current and foreseeable future games, the abstraction layer should be
+designed as follows:
+
+```python
+@dataclass
+class GameAgent:
+    """An LLM-backed participant in any game type."""
+    name: str
+    system_message: str
+    model: str
+    api_key: str
+    temperature: float = 0.3
+
+class ConversationEngine:
+    """Runs turn-based conversations between 2+ agents."""
+
+    def run_bilateral(self, agent1, agent2, opening, max_turns, termination_fn):
+        """Two-agent back-and-forth (zero-sum negotiation)."""
+        ...
+
+    def run_multilateral(self, agents, opening, max_turns, speaker_order_fn, termination_fn):
+        """N-agent round-robin or custom speaker order."""
+        ...
+
+    def single_decision(self, agent, context, constraint):
+        """One-shot decision call (e.g., cooperate/defect in PD)."""
+        ...
+
+class GameRunner:
+    """Orchestrates game-specific logic."""
+
+    def run_zero_sum(self, team1, team2, config): ...
+    def run_prisoners_dilemma(self, team1, team2, config, num_iterations): ...
+    def run_multilateral_negotiation(self, teams, config): ...
+```
+
+This design:
+- Separates **conversation mechanics** (how agents talk) from **game logic** (rules,
+  scoring, phases)
+- Supports bilateral and multilateral conversations through the same engine
+- Handles prisoner's dilemma naturally: `run_bilateral()` for cheap talk +
+  `single_decision()` for the cooperate/defect choice
+- Is framework-agnostic — each method is 20-50 lines of OpenAI API calls
+- Can be wrapped by LangGraph nodes later if complex orchestration is ever needed
+
+---
+
+## 7. Recommendation
+
+**Migrate to direct OpenAI API calls with a game-aware abstraction layer.** The
+rationale:
 
 1. **The project uses ~5% of AutoGen's feature set.** The actual need is a turn-based
    conversation loop with termination logic — something achievable in ~50-80 lines of
@@ -303,14 +490,27 @@ remain unaffected. Integration tests that mock AutoGen agents would need updatin
 5. **Migration effort is low.** The narrow API surface means the change is confined to
    3-4 files with straightforward replacements.
 
+6. **Future game types don't need a framework.** Prisoner's dilemma is *simpler* than
+   the current game. Multi-party round-robin is a ~20-line extension. The only scenario
+   where a framework would help (complex diplomacy with side channels) is far beyond
+   the platform's educational scope.
+
+7. **The direct-API approach creates a better foundation for multi-game support.** A
+   `ConversationEngine` + `GameRunner` architecture (see Section 6.6) cleanly separates
+   conversation mechanics from game rules, making it easy to add prisoner's dilemma,
+   auctions, or multi-party games without adopting a framework.
+
 ### Suggested Approach
 
-1. Create a thin abstraction layer (`NegotiationAgent` dataclass + `run_negotiation()`
-   function) that replaces AutoGen agents.
-2. Migrate `evaluate_deal_summary` to a direct OpenAI call.
-3. Remove `autogen` from dependencies.
-4. Verify all existing tests pass.
-5. Run an end-to-end negotiation to confirm behavioral equivalence.
+1. Create a `ConversationEngine` class with `run_bilateral()`, `run_multilateral()`,
+   and `single_decision()` methods (see Section 6.6).
+2. Create a `GameRunner` class that encapsulates game-specific logic (zero-sum scoring,
+   prisoner's dilemma payoff matrices, etc.).
+3. Migrate `evaluate_deal_summary` to a direct OpenAI call via `single_decision()`.
+4. Remove `autogen` from dependencies.
+5. Verify all existing tests pass.
+6. Run an end-to-end negotiation to confirm behavioral equivalence.
+7. Implement prisoner's dilemma game logic using the new architecture.
 
 ---
 
