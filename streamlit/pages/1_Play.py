@@ -1,5 +1,3 @@
-import re
-
 from modules.auth_guard import ensure_session_defaults, require_auth
 
 import streamlit as st
@@ -12,14 +10,15 @@ from modules.database_handler import (
     get_academic_years_of_students,
     get_class_and_group_from_user_id,
     get_classes_of_students,
+    get_game_simulation_params,
     get_group_values,
     get_groups_of_students,
-    get_negotiation_chat,
     get_round_data_by_class_group_id,
     get_student_prompt,
     get_user_id_of_student,
     insert_student_prompt,
 )
+from modules.negotiation_display import render_matchup_chats
 from modules.sidebar import render_sidebar
 
 # ------------------------ SET THE DEFAULT SESSION STATE FOR THE PLAY SECTION ---------------------------- #
@@ -201,48 +200,56 @@ if st.session_state.get("authenticated", False):
                 if str(game_id) in st.session_state.game_started:
                     del st.session_state.game_started[str(game_id)]
 
-                files_names = []
-                for i in range(len(round_data)):
-                    round_number = round_data[i][0]
-                    class_1, group_1, class_2, group_2 = (
-                        round_data[i][1],
-                        round_data[i][2],
-                        round_data[i][3],
-                        round_data[i][4],
-                    )
+                matchup_labels = {}
+                for matchup in round_data:
+                    round_number, class_1, group_1, class_2, group_2 = matchup[:5]
                     if class_1 == CLASS and group_1 == GROUP_ID:
-                        files_names.append([round_number, class_2, group_2])
+                        opponent_class, opponent_group = class_2, group_2
                     else:
-                        files_names.append([round_number, class_1, group_1])
+                        opponent_class, opponent_group = class_1, group_1
 
-                options = [name_roles_1, name_roles_2]
-                col1, col2 = st.columns(2)
-                with col1:
-                    selection = st.radio(label="Select Your Position", options=options, horizontal=True)
+                    label = f"Round {round_number} (vs Class {opponent_class} • Group {opponent_group})"
+                    matchup_labels[label] = matchup
 
-                options_chat = [f"Round {i[0]} (vs Class {i[1]} - Group {i[2]})" for i in files_names]
-                with col2:
-                    chat_selector = st.selectbox("Select Negotiation Chat", options_chat)
+                chat_selector = st.selectbox("Select Negotiation Chat", list(matchup_labels.keys()))
+                (
+                    round_number,
+                    class_1,
+                    group_1,
+                    class_2,
+                    group_2,
+                    score_team1_role1,
+                    score_team2_role2,
+                    score_team1_role2,
+                    score_team2_role1,
+                ) = matchup_labels[chat_selector]
 
-                st.markdown(f"### {chat_selector}")
+                simulation_params = get_game_simulation_params(game_id)
+                summary_termination_message = (
+                    simulation_params.get("summary_termination_message") if simulation_params else "Agreed value:"
+                )
 
-                aux_ = chat_selector.split("Class ")
-                round_number = int(re.findall(r"\d+", aux_[0])[0])
-                class_ = aux_[1][0]
-                group_ = int(re.findall(r"\d+", aux_[1])[0])
-
-                if selection == name_roles_1:
-                    chat = get_negotiation_chat(game_id, round_number, CLASS, GROUP_ID, class_, group_)
-                    if chat:
-                        st.write(chat.replace("$", r"\$"))
-                    else:
-                        st.write("Chat not found. Please contact your Instructor.")
-                elif selection == name_roles_2:
-                    chat = get_negotiation_chat(game_id, round_number, class_, group_, CLASS, GROUP_ID)
-                    if chat:
-                        st.write(chat.replace("$", r"\$"))
-                    else:
-                        st.write("Chat not found. Please contact your Instructor.")
+                header = f"Round {round_number}: Class {class_1} • Group {group_1} vs Class {class_2} • Group {group_2}"
+                st.markdown(f"### {header}")
+                render_matchup_chats(
+                    game_id=game_id,
+                    round_number=round_number,
+                    class_1=class_1,
+                    team_1=group_1,
+                    class_2=class_2,
+                    team_2=group_2,
+                    score_team1_role1=score_team1_role1,
+                    score_team2_role2=score_team2_role2,
+                    score_team1_role2=score_team1_role2,
+                    score_team2_role1=score_team2_role1,
+                    name_roles_1=name_roles_1,
+                    name_roles_2=name_roles_2,
+                    summary_termination_message=summary_termination_message,
+                    transcript_key_prefix=f"play_chat_{game_id}_{round_number}_{class_1}_{group_1}_{class_2}_{group_2}",
+                    focus_class=CLASS,
+                    focus_group=GROUP_ID,
+                    viewer_label="You",
+                )
             else:
                 st.write("You do not have any chats available. Please contact your Instructor.")
         else:

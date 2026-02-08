@@ -1707,9 +1707,12 @@ def get_round_data_by_class_group_id(game_id, class_, group_id):
     try:
         with conn.cursor() as cur:
 
-            query = """SELECT round_number, group1_class, group1_id, group2_class, group2_id
+            query = """SELECT round_number, group1_class, group1_id, group2_class, group2_id,
+                              score_team1_role1, score_team2_role2, score_team1_role2, score_team2_role1
                        FROM round
-                       WHERE ((group1_class = %(param2)s AND group1_id = %(param3)s) OR (group2_class = %(param2)s AND group2_id = %(param3)s)) AND game_id=%(param1)s;"""
+                       WHERE ((group1_class = %(param2)s AND group1_id = %(param3)s) OR (group2_class = %(param2)s AND group2_id = %(param3)s))
+                         AND game_id=%(param1)s
+                       ORDER BY round_number;"""
 
             cur.execute(
                 query,

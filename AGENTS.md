@@ -92,6 +92,7 @@ Scoring:
 - Use descriptive snake_case names.
 - Keep page scripts as top-level Streamlit composition; move supporting logic to `streamlit/modules/`.
 - Prefer explicit imports over wildcard imports.
+- Always evaluate whether logic can be abstracted and reused before introducing duplicate code.
 
 ## Configuration & Secrets
 - Copy `streamlit/.streamlit/secrets.example.toml` to `streamlit/.streamlit/secrets.toml` for local setup.
