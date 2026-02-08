@@ -1,5 +1,7 @@
 import re
 
+from .llm_provider import LLMConfig
+
 
 def clean_agent_message(agent_name_1, agent_name_2, message):
     if not message:
@@ -131,12 +133,20 @@ def is_valid_termination(msg, history, negotiation_termination_message):
     return True
 
 
-def build_llm_config(model, api_key, temperature=0.3, top_p=0.5):
-    config_list = {"config_list": [{"model": model, "api_key": api_key}]}
-    if not model.startswith("gpt-5"):
-        config_list["temperature"] = temperature
-        config_list["top_p"] = top_p
-    return config_list
+def build_llm_config(model, api_key, temperature=0.3, top_p=0.5, base_url=None):
+    """Build an LLMConfig for any OpenAI-compatible provider.
+
+    Args:
+        model: Model identifier (e.g. "gpt-5-mini", "openai/gpt-4o" for OpenRouter).
+        api_key: API key for the provider.
+        temperature: Sampling temperature (omitted for gpt-5 family).
+        top_p: Nucleus sampling (omitted for gpt-5 family).
+        base_url: API base URL.  ``None`` uses the OpenAI default.
+                  For OpenRouter pass ``"https://openrouter.ai/api/v1"``.
+    """
+    if model.startswith("gpt-5"):
+        return LLMConfig(model=model, api_key=api_key, base_url=base_url)
+    return LLMConfig(model=model, api_key=api_key, base_url=base_url, temperature=temperature, top_p=top_p)
 
 
 def is_invalid_api_key_error(error):

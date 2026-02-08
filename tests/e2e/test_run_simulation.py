@@ -3,7 +3,7 @@
 Note: This test requires:
 1. The Streamlit app to be running (make run)
 2. Environment variables: E2E_INSTRUCTOR_EMAIL, E2E_INSTRUCTOR_PASSWORD, E2E_OPENAI_API_KEY
-3. A compatible Python version for pyautogen (< 3.14 as of 2024)
+3. The openai Python package installed
 
 The test creates test data (game, students, prompts), runs a simulation via the UI,
 and cleans up afterward.

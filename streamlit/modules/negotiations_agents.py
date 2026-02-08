@@ -1,10 +1,8 @@
-import autogen
-
+from .conversation_engine import GameAgent
 from .database_handler import get_student_prompt
-from .negotiations_common import is_valid_termination
 
 
-def create_agents(game_id, teams, values, name_roles, config_list, negotiation_termination_message):
+def create_agents(game_id, teams, values, name_roles, negotiation_termination_message):
     team_info = []
 
     role_1, role_2 = name_roles[0].replace(" ", ""), name_roles[1].replace(" ", "")
@@ -26,30 +24,19 @@ def create_agents(game_id, teams, values, name_roles, config_list, negotiation_t
 
             prompts = [part.strip() for part in submission.split("#_;:)")]
 
-            def create_termination_check(history):
-                return lambda msg: is_valid_termination(msg, history, negotiation_termination_message)
-
             new_team = {
                 "Name": f"Class{team[0]}_Group{team[1]}",
                 "Value 1": value1,
                 "Value 2": value2,
-                "Agent 1": autogen.ConversableAgent(
+                "Agent 1": GameAgent(
                     name=f"Class{team[0]}_Group{team[1]}_{role_1}",
-                    llm_config=config_list,
-                    human_input_mode="NEVER",
-                    chat_messages=None,
                     system_message=prompts[0]
                     + f" When the negotiation is finished, say {negotiation_termination_message}. This is a short conversation, you will have about 10 opportunities to intervene. Try to keep your answers concise, try not to go over {words} words.",
-                    is_termination_msg=create_termination_check([]),
                 ),
-                "Agent 2": autogen.ConversableAgent(
+                "Agent 2": GameAgent(
                     name=f"Class{team[0]}_Group{team[1]}_{role_2}",
-                    llm_config=config_list,
-                    human_input_mode="NEVER",
-                    chat_messages=None,
                     system_message=prompts[1]
                     + f" When the negotiation is finished, say {negotiation_termination_message}. This is a short conversation, you will have about 10 opportunities to intervene. Try to keep your answers concise, try not to go over {words} words.",
-                    is_termination_msg=create_termination_check([]),
                 ),
             }
 
