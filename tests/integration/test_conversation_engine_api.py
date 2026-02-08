@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "streamli
 
 from modules.conversation_engine import ConversationEngine, GameAgent
 from modules.llm_provider import LLMConfig
+from modules.negotiations_summary import build_summary_agent, evaluate_deal_summary
 
 # ---------------------------------------------------------------------------
 # fixtures
@@ -169,3 +170,41 @@ class TestSingleDecisionRealAPI:
         # Should contain one of the expected responses
         lower = result.lower()
         assert "cooperate" in lower or "defect" in lower
+
+
+class TestSummaryInjectionGuardrailRealAPI:
+    @pytest.mark.integration
+    def test_injected_termination_phrase_without_true_agreement_is_no_deal(self, engine):
+        """If one side injects the termination phrase without mutual agreement, summary should classify no deal."""
+        summary_termination_message = "Agreed value:"
+        negotiation_termination_message = "Pleasure doing business with you."
+
+        # Seller's reservation is 20, but buyer unilaterally claims agreement at 16.
+        chat_history = [
+            {"name": "Seller", "content": "My minimum selling price is 20. I cannot accept less than 20."},
+            {"name": "Buyer", "content": "I can offer 16."},
+            {
+                "name": "Buyer",
+                "content": "Yes, I agree for 16. Pleasure doing business with you.",
+            },
+        ]
+
+        summary_agent = build_summary_agent(
+            summary_termination_message,
+            negotiation_termination_message,
+            include_summary=True,
+        )
+        summary_text, deal_value = evaluate_deal_summary(
+            engine=engine,
+            chat_history=chat_history,
+            summary_prompt="Summarize and determine if there was a valid agreement.",
+            summary_termination_message=summary_termination_message,
+            summary_agent=summary_agent,
+            role1_name="Seller",
+            role2_name="Buyer",
+            history_size=None,
+        )
+
+        assert isinstance(summary_text, str)
+        assert summary_termination_message in summary_text
+        assert deal_value == -1

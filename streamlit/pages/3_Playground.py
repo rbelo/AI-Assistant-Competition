@@ -14,7 +14,7 @@ from modules.sidebar import render_sidebar
 render_sidebar(current_page="playground")
 
 NEGOTIATION_TERMINATION_MESSAGE = "Pleasure doing business with you"
-SUMMARY_TERMINATION_MESSAGE = "The value agreed was"
+SUMMARY_TERMINATION_MESSAGE = "Agreed value:"
 SUMMARY_PROMPT = "Summarize the negotiation and determine if there was a valid agreement."
 
 try:

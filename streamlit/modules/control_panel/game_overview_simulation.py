@@ -74,7 +74,7 @@ def render_simulation_tab(selected_game: dict) -> None:
             simulation_params["summary_prompt"] if simulation_params else "What was the value agreed?"
         )
         default_summary_termination = (
-            simulation_params["summary_termination_message"] if simulation_params else "The value agreed was"
+            simulation_params["summary_termination_message"] if simulation_params else "Agreed value:"
         )
         default_conversation_starter = simulation_params["conversation_order"] if simulation_params else name_roles_1
         conversation_options = [f"{name_roles_1} ➡ {name_roles_2}", f"{name_roles_2} ➡ {name_roles_1}"]
