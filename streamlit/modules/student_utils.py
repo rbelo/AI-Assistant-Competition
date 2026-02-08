@@ -1,5 +1,9 @@
+import logging
+
 import pandas as pd
 from modules.database_handler import insert_student_data
+
+logger = logging.getLogger(__name__)
 
 
 def normalize_column_names(df):
@@ -57,7 +61,7 @@ def process_student_csv(file):
             file.seek(0)
             df = pd.read_csv(file, sep=",", dtype={"academic year": str, "academic_year": str, "year": str})
 
-        print("CSV file read successfully.")
+        logger.debug("CSV file read successfully.")
 
         # Normalize columns
         df = normalize_column_names(df)
@@ -74,25 +78,76 @@ def process_student_csv(file):
         # Insert student data row by row
         success_count = 0
         failure_count = 0
+        failure_examples = []
+        max_examples = 5
 
-        for _, row in df.iterrows():
-            user_id = row["user_id"]
-            email = row["email"]
-            group_id = row["group_id"]
-            academic_year = row["academic_year"]
-            class_ = row["class"]
+        for idx, row in df.iterrows():
+            row_number = idx + 2  # includes header row on line 1
+            user_id_raw = row["user_id"]
+            email_raw = row["email"]
+            group_id_raw = row["group_id"]
+            academic_year_raw = row["academic_year"]
+            class_raw = row["class"]
 
-            print(f"Adding student: {user_id}, {email}, {group_id}, {academic_year}, {class_}")
+            if (
+                pd.isna(user_id_raw)
+                or pd.isna(email_raw)
+                or pd.isna(group_id_raw)
+                or pd.isna(academic_year_raw)
+                or pd.isna(class_raw)
+            ):
+                failure_count += 1
+                if len(failure_examples) < max_examples:
+                    failure_examples.append(f"row {row_number}: missing required value")
+                continue
+
+            user_id = str(user_id_raw).strip()
+            email = str(email_raw).strip().lower()
+            academic_year = str(academic_year_raw).strip()
+            class_ = str(class_raw).strip()
+
+            if not user_id or not email or not academic_year or not class_:
+                failure_count += 1
+                if len(failure_examples) < max_examples:
+                    failure_examples.append(f"row {row_number}: empty required field after normalization")
+                continue
+
+            try:
+                group_id = int(str(group_id_raw).strip())
+            except ValueError:
+                try:
+                    group_id = int(float(str(group_id_raw).strip()))
+                except ValueError:
+                    failure_count += 1
+                    if len(failure_examples) < max_examples:
+                        failure_examples.append(f"row {row_number}: invalid group_id '{group_id_raw}'")
+                    continue
+
+            logger.debug(
+                "Adding student row user_id=%s email=%s group_id=%s academic_year=%s class=%s",
+                user_id,
+                email,
+                group_id,
+                academic_year,
+                class_,
+            )
 
             if insert_student_data(user_id, email, "Not defined", group_id, academic_year, class_):
                 success_count += 1
             else:
                 failure_count += 1
+                if len(failure_examples) < max_examples:
+                    failure_examples.append(f"row {row_number}: database insert failed for user_id '{user_id}'")
+
+        if success_count == 0 and failure_count > 0:
+            examples_text = "; ".join(failure_examples) if failure_examples else "no row-level diagnostics available"
+            return False, f"No students were added. {failure_count} rows failed. Examples: {examples_text}."
 
         if failure_count > 0:
+            examples_text = "; ".join(failure_examples) if failure_examples else "no row-level diagnostics available"
             return (
                 True,
-                f"Added {success_count} students. Failed to add {failure_count} students (possibly duplicates).",
+                f"Added {success_count} students. Failed to add {failure_count} students. Examples: {examples_text}.",
             )
         else:
             return True, "All students added successfully!"

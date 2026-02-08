@@ -102,6 +102,23 @@ class TestProcessStudentCSV:
         assert "1" in message  # 1 failed
 
     @pytest.mark.integration
+    def test_all_rows_fail_returns_error(self, student_utils_with_mocks, csv_file):
+        """If nothing is inserted, return an error outcome."""
+        student_utils, mock_db = student_utils_with_mocks
+
+        mock_db.insert_student_data.side_effect = [False, False]
+
+        content = "user_id;email;group_id;academic_year;class\n"
+        content += "student1;student1@test.com;1;2024-2025;ClassA\n"
+        content += "student2;student2@test.com;1;2024-2025;ClassA\n"
+
+        file = csv_file(content)
+        success, message = student_utils.process_student_csv(file)
+
+        assert success is False
+        assert "no students were added" in message.lower()
+
+    @pytest.mark.integration
     def test_comma_separated_fallback(self, student_utils_with_mocks, csv_file):
         """Test that comma-separated CSV works when semicolon fails."""
         student_utils, mock_db = student_utils_with_mocks

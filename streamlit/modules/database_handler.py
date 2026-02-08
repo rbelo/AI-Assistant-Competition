@@ -895,8 +895,13 @@ def insert_student_data(user_id, email, temp_password, group_id, academic_year, 
             normalized_academic_year = str(academic_year).strip()
             normalized_class = str(class_).strip()
 
-            print(
-                f"User ID: {user_id}, Email: {email}, Temp Password: {temp_password}, Group ID: {group_id}, Academic Year: {academic_year}, Class: {class_}"
+            logger.debug(
+                "insert_student_data user_id=%s email=%s group_id=%s academic_year=%s class=%s",
+                user_id,
+                email,
+                group_id,
+                normalized_academic_year,
+                normalized_class,
             )
 
             # Check if user already exists

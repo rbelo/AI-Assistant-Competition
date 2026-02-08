@@ -9,6 +9,9 @@ from ..student_utils import process_student_csv
 
 def render_student_management_tab():
     st.subheader("Student Management")
+    msg = st.session_state.pop("cc_student_import_message", None)
+    if msg:
+        getattr(st, msg[0])(msg[1])
 
     def show_cc_student_table():
         students_from_db = get_students_from_db()
@@ -79,11 +82,11 @@ def render_student_management_tab():
                 if uploaded_file is not None:
                     success, message = process_student_csv(uploaded_file)
                     if success:
-                        st.success(message)
+                        st.session_state.cc_student_import_message = ("success", message)
                     else:
-                        st.error(message)
+                        st.session_state.cc_student_import_message = ("error", message)
                 else:
-                    st.error("Please upload a valid CSV file.")
+                    st.session_state.cc_student_import_message = ("error", "Please upload a valid CSV file.")
                 st.session_state.cc_add_students = False
                 st.rerun()
 
