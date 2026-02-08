@@ -1,5 +1,4 @@
 import pandas as pd
-from st_aggrid import AgGrid, ColumnsAutoSizeMode, GridOptionsBuilder, GridUpdateMode
 
 import streamlit as st
 
@@ -12,9 +11,13 @@ def render_student_management_tab():
     msg = st.session_state.pop("cc_student_import_message", None)
     if msg:
         getattr(st, msg[0])(msg[1])
-
-    def show_cc_student_table():
-        students_from_db = get_students_from_db()
+    students_from_db = get_students_from_db()
+    if not isinstance(students_from_db, pd.DataFrame):
+        st.error("Failed to load students from database.")
+        students_display = pd.DataFrame(
+            columns=["User ID", "Email", "Group ID", "Academic Year", "Class", "Created at"]
+        )
+    else:
         students_display = students_from_db.rename(
             columns={
                 "user_id": "User ID",
@@ -26,34 +29,41 @@ def render_student_management_tab():
             }
         )
 
-        st.session_state.cc_students = students_display
-        students_display[""] = ""
+    st.session_state.cc_students = students_display
 
-        gb = GridOptionsBuilder.from_dataframe(
-            students_display[["", "User ID", "Email", "Group ID", "Academic Year", "Class", "Created at"]]
+    if not students_display.empty:
+        filter_col1, filter_col2, filter_col3 = st.columns(3)
+        with filter_col1:
+            year_options = ["All"] + sorted(
+                students_display["Academic Year"].astype(str).unique().tolist(), reverse=True
+            )
+            selected_year = st.selectbox("Filter by Academic Year", year_options, key="cc_students_filter_year")
+        with filter_col2:
+            class_options = ["All"] + sorted(students_display["Class"].astype(str).unique().tolist())
+            selected_class = st.selectbox("Filter by Class", class_options, key="cc_students_filter_class")
+        with filter_col3:
+            search = st.text_input("Search by User ID or Email", key="cc_students_filter_search").strip().lower()
+
+        filtered_students = students_display.copy()
+        if selected_year != "All":
+            filtered_students = filtered_students[filtered_students["Academic Year"].astype(str) == selected_year]
+        if selected_class != "All":
+            filtered_students = filtered_students[filtered_students["Class"].astype(str) == selected_class]
+        if search:
+            filtered_students = filtered_students[
+                filtered_students["User ID"].astype(str).str.lower().str.contains(search, na=False)
+                | filtered_students["Email"].astype(str).str.lower().str.contains(search, na=False)
+            ]
+
+        st.dataframe(
+            filtered_students[["User ID", "Email", "Group ID", "Academic Year", "Class", "Created at"]],
+            use_container_width=True,
+            hide_index=True,
+            height=min(42 + 35 * max(len(filtered_students), 1), 420),
         )
-        gb.configure_column("", checkboxSelection=True, width=60)
-        gb.configure_column("User ID", width=120)
-        gb.configure_column("Email", width=140)
-        gb.configure_column("Group ID", width=120)
-        gb.configure_column("Academic Year", width=140)
-        gb.configure_column("Class", width=80)
-        gb.configure_column("Created at", width=130)
-        gb.configure_selection("single")
-        grid_options = gb.build()
-
-        data = AgGrid(
-            students_display[["", "User ID", "Email", "Group ID", "Academic Year", "Class", "Created at"]],
-            gridOptions=grid_options,
-            fit_columns_on_grid_load=True,
-            height=min(36 + 27 * students_display.shape[0], 300),
-            update_mode=GridUpdateMode.SELECTION_CHANGED,
-            columns_auto_size_mode=ColumnsAutoSizeMode.FIT_CONTENTS,
-        )
-        return data
-
-    data = show_cc_student_table()
-    st.session_state.cc_selected_student = data["selected_rows"]
+    else:
+        filtered_students = students_display
+        st.info("No students found.")
 
     _, col1, col2, col3 = st.columns([1, 1, 1, 2])
 
@@ -87,8 +97,8 @@ def render_student_management_tab():
                         st.session_state.cc_student_import_message = ("error", message)
                 else:
                     st.session_state.cc_student_import_message = ("error", "Please upload a valid CSV file.")
-                st.session_state.cc_add_students = False
-                st.rerun()
+                    st.session_state.cc_add_students = False
+                    st.rerun()
 
     if st.session_state.cc_add_student:
         with st.form("cc_add_student_form"):
@@ -102,34 +112,67 @@ def render_student_management_tab():
 
             if submit_button:
                 if not user_id or not email or not group_id or not academic_year or not class_:
-                    st.error("Please fill in all fields.")
+                    st.session_state.cc_student_import_message = ("error", "Please fill in all fields.")
                 else:
                     if insert_student_data(user_id, email, "Not defined", group_id, academic_year, class_):
-                        st.success("Student added.")
+                        st.session_state.cc_student_import_message = ("success", "Student added successfully.")
                     else:
-                        st.error("Failed to add student. Please try again.")
+                        st.session_state.cc_student_import_message = (
+                            "error",
+                            "Failed to add student. Please try again.",
+                        )
                     st.session_state.cc_add_student = False
                     st.rerun()
 
     if st.session_state.cc_remove_student:
         if st.session_state.cc_students.empty:
-            st.warning("No students found. Please add a student.")
+            st.session_state.cc_student_import_message = ("warning", "No students found. Please add a student.")
+            st.session_state.cc_remove_student = False
+            st.rerun()
         else:
-            if st.session_state.cc_selected_student is not None:
-                if len(st.session_state.cc_selected_student) != 0:
-                    if isinstance(st.session_state.cc_selected_student, pd.DataFrame):
-                        user_id = st.session_state.cc_selected_student["User ID"].tolist()[0]
-                    else:
-                        user_id = st.session_state.cc_selected_student[0]["User ID"]
+            removal_base = filtered_students if not filtered_students.empty else st.session_state.cc_students
+            labels = {
+                str(row["User ID"]): (
+                    f"{row['User ID']} • {row['Email']} • "
+                    f"Group {row['Group ID']} • {row['Academic Year']} • {row['Class']}"
+                )
+                for _, row in removal_base.iterrows()
+            }
 
-                    if remove_student(user_id):
-                        st.success("Student removed.")
-                        st.session_state.cc_students = st.session_state.cc_students[
-                            st.session_state.cc_students["User ID"] != user_id
-                        ]
+            selected_user_ids = st.multiselect(
+                "Select students to remove",
+                options=sorted(labels.keys()),
+                format_func=lambda uid: labels.get(uid, uid),
+                key="cc_remove_selected_user_ids",
+            )
+
+            if st.button("Delete Selected Students", key="cc_delete_selected_students"):
+                if not selected_user_ids:
+                    st.session_state.cc_student_import_message = ("warning", "Please select at least one student.")
+                else:
+                    removed = 0
+                    failed = []
+                    for user_id in selected_user_ids:
+                        if remove_student(user_id):
+                            removed += 1
+                        else:
+                            failed.append(user_id)
+
+                    if removed > 0 and not failed:
+                        st.session_state.cc_student_import_message = (
+                            "success",
+                            f"Removed {removed} student(s) successfully.",
+                        )
+                    elif removed > 0 and failed:
+                        st.session_state.cc_student_import_message = (
+                            "warning",
+                            f"Removed {removed} student(s). Failed to remove {len(failed)}: {', '.join(failed[:3])}.",
+                        )
                     else:
-                        st.error("Failed to remove student. Please try again.")
-            else:
-                st.warning("Please select a student to remove.")
-        st.session_state.cc_remove_student = False
-        st.rerun()
+                        st.session_state.cc_student_import_message = (
+                            "error",
+                            f"Failed to remove selected students: {', '.join(failed[:3])}.",
+                        )
+
+                    st.session_state.cc_remove_student = False
+                    st.rerun()

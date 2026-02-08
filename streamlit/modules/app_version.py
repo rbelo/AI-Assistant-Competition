@@ -1,4 +1,4 @@
-DEFAULT_APP_VERSION = "v2026-02-08.1"
+DEFAULT_APP_VERSION = "v2026-02-08.2"
 
 
 def get_app_version() -> str:
