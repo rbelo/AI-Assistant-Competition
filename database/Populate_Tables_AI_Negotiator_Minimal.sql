@@ -10,7 +10,7 @@
 
 INSERT INTO user_ (user_id, email, password, group_id, academic_year, class)
 VALUES
-    ('admin', :'admin_email', :'admin_password_hash', 0, 0, '_');
+    ('admin', :'admin_email', :'admin_password_hash', 0, '0', 'ADMIN');
 
 INSERT INTO instructor (user_id, permission_level)
 VALUES

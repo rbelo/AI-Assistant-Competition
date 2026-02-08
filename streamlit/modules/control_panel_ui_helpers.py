@@ -4,18 +4,23 @@
 def build_year_class_options(academic_year_class_combinations):
     combination_options = []
     for year, classes in academic_year_class_combinations.items():
-        combination_options.append(f"{year}")
-        combination_options.extend([f"{year} - {cls}" for cls in classes])
+        combination_options.append((str(year), None))
+        combination_options.extend([(str(year), str(cls)) for cls in classes])
     return combination_options
 
 
-def parse_year_class(selection):
-    if "-" in selection:
-        game_academic_year, game_class = selection.replace(" ", "").split("-")
-    else:
-        game_academic_year = selection
-        game_class = "_"
-    return game_academic_year, game_class
+def format_year_class_option(selection):
+    game_academic_year, game_class = selection
+    if game_class:
+        return f"{game_academic_year} - {game_class}"
+    return f"{game_academic_year} - All classes"
+
+
+def format_game_selector_label(game_academic_year, game_class, game_name):
+    class_label = str(game_class).strip() if game_class is not None else ""
+    if class_label in {"", "_"}:
+        class_label = "All classes"
+    return f"{game_academic_year} • {class_label} • {game_name}"
 
 
 def calculate_planned_chats(num_teams, rounds_to_run):

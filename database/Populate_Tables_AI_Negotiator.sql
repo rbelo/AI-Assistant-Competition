@@ -10,7 +10,7 @@
 -- Admin + instructors
 INSERT INTO user_ (user_id, email, password, group_id, academic_year, class)
 VALUES
-    ('admin', 'admin@rodrigobelo.com', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 0, 0, '_'),
+    ('admin', 'admin@rodrigobelo.com', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 0, '0', 'ADMIN'),
     ('inst001', 'instructor1@example.com', 'c1437a55f6e93b7049c4064af1b0920974e383a435283f5d0b0496ee4a8a47b5', 0, 2049, 'T'),
     ('inst002', 'instructor2@example.com', 'c1437a55f6e93b7049c4064af1b0920974e383a435283f5d0b0496ee4a8a47b5', 0, 2049, 'U');
 

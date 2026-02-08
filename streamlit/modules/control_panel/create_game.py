@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 
 import streamlit as st
 
-from ..control_panel_ui_helpers import build_year_class_options, parse_year_class
+from ..control_panel_ui_helpers import build_year_class_options, format_game_selector_label, format_year_class_option
 from ..database_handler import (
     get_academic_year_class_combinations,
     get_group_ids_from_game_id,
@@ -87,9 +87,10 @@ def render_create_game_tab(logger):
         selected_combination = st.selectbox(
             "Select Academic Year and Class",
             options=combination_options,
+            format_func=format_year_class_option,
             key="cc_academic_year_class_combination",
         )
-        game_academic_year, game_class = parse_year_class(selected_combination)
+        game_academic_year, game_class = selected_combination
 
         password = st.text_input("Game Password (4-digit)", max_chars=4, key="cc_password")
 
@@ -123,7 +124,7 @@ def render_create_game_tab(logger):
                 submission_deadline = datetime.combine(deadline_date, deadline_time)
                 name_roles = name_roles_1 + "#_;:)" + name_roles_2
 
-                store_game_in_db(
+                if not store_game_in_db(
                     next_game_id,
                     0,
                     user_id,
@@ -137,7 +138,10 @@ def render_create_game_tab(logger):
                     submission_deadline,
                     game_explanation,
                     game_type,
-                )
+                ):
+                    st.session_state.cc_create_game_message = ("error", "Failed to create game in the database.")
+                    st.session_state.cc_game_creation_in_progress = False
+                    st.rerun()
 
                 if not populate_plays_table(next_game_id, game_academic_year, game_class):
                     st.session_state.cc_create_game_message = (
@@ -184,10 +188,9 @@ def render_create_game_tab(logger):
 
                 st.session_state.cc_game_created = True
                 st.session_state.cc_pending_selected_year = game_academic_year
-                if game_class != "_":
-                    st.session_state.cc_pending_selected_game = f"{game_name} - Class {game_class}"
-                else:
-                    st.session_state.cc_pending_selected_game = game_name
+                st.session_state.cc_pending_selected_game = format_game_selector_label(
+                    game_academic_year, game_class, game_name
+                )
             except Exception as e:
                 logger.exception("Game creation failed")
                 st.session_state.cc_create_game_message = (

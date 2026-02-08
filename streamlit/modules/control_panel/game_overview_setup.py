@@ -4,7 +4,7 @@ from datetime import datetime
 
 import streamlit as st
 
-from ..control_panel_ui_helpers import build_year_class_options, parse_year_class
+from ..control_panel_ui_helpers import build_year_class_options, format_year_class_option
 from ..database_handler import (
     get_academic_year_class_combinations,
     get_game_by_id,
@@ -18,6 +18,10 @@ from ..database_handler import (
 
 
 def render_setup_tab(selected_game: dict, game_key_suffix: str) -> None:
+    msg = st.session_state.pop("cc_setup_game_message", None)
+    if msg:
+        getattr(st, msg[0])(msg[1])
+
     game_id = selected_game["game_id"]
     game_details = get_game_by_id(game_id)
     if not game_details:
@@ -30,6 +34,8 @@ def render_setup_tab(selected_game: dict, game_key_suffix: str) -> None:
     name_roles_2_stored = game_details["name_roles"].split("#_;:)")[1]
     game_academic_year_stored = game_details["game_academic_year"]
     game_class_stored = game_details["game_class"]
+    if game_class_stored in {"", "_"}:
+        game_class_stored = None
     password_stored = game_details["password"]
     timestamp_game_creation_stored = game_details["timestamp_game_creation"]
     deadline_date_stored = game_details["timestamp_submission_deadline"].date()
@@ -55,10 +61,7 @@ def render_setup_tab(selected_game: dict, game_key_suffix: str) -> None:
         return
 
     combination_options = build_year_class_options(academic_year_class_combinations)
-    if game_class_stored != "_":
-        stored_combination = f"{game_academic_year_stored} - {game_class_stored}"
-    else:
-        stored_combination = f"{game_academic_year_stored}"
+    stored_combination = (str(game_academic_year_stored), game_class_stored)
     stored_index = combination_options.index(stored_combination) if stored_combination in combination_options else 0
 
     game_type_label = "Zero Sum" if game_type == "zero_sum" else "Prisoner's Dilemma"
@@ -135,9 +138,10 @@ def render_setup_tab(selected_game: dict, game_key_suffix: str) -> None:
             "Select Academic Year and Class",
             options=combination_options,
             index=stored_index,
+            format_func=format_year_class_option,
             key=f"cc_academic_year_class_combination_edit_{game_key_suffix}",
         )
-        game_academic_year_edit, game_class_edit = parse_year_class(selected_combination_edit)
+        game_academic_year_edit, game_class_edit = selected_combination_edit
 
         password_edit = st.text_input(
             "Game Password (4-digit)",
@@ -223,5 +227,5 @@ def render_setup_tab(selected_game: dict, game_key_suffix: str) -> None:
         st.error("An error occurred. Please try again.")
 
     if update_success:
-        st.success("Game updated.")
+        st.session_state.cc_setup_game_message = ("success", "Game saved successfully.")
         st.rerun()

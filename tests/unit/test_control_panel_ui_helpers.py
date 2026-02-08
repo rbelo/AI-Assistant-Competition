@@ -10,9 +10,10 @@ if STREAMLIT_PATH not in sys.path:
 from modules.control_panel_ui_helpers import (  # noqa: E402
     build_year_class_options,
     calculate_planned_chats,
+    format_game_selector_label,
     format_progress_caption,
     format_progress_status_line,
-    parse_year_class,
+    format_year_class_option,
 )
 
 
@@ -21,19 +22,27 @@ class TestYearClassHelpers:
     def test_build_year_class_options(self):
         combos = {"2025": ["A", "B"], "2024": ["C"]}
         result = build_year_class_options(combos)
-        assert result == ["2025", "2025 - A", "2025 - B", "2024", "2024 - C"]
+        assert result == [("2025", None), ("2025", "A"), ("2025", "B"), ("2024", None), ("2024", "C")]
 
     @pytest.mark.unit
-    def test_parse_year_class_with_class(self):
-        year, cls = parse_year_class("2025 - A")
-        assert year == "2025"
-        assert cls == "A"
+    def test_format_year_class_option_with_class(self):
+        text = format_year_class_option(("2025/2026 - T4", "TXA"))
+        assert text == "2025/2026 - T4 - TXA"
 
     @pytest.mark.unit
-    def test_parse_year_class_without_class(self):
-        year, cls = parse_year_class("2025")
-        assert year == "2025"
-        assert cls == "_"
+    def test_format_year_class_option_all_classes(self):
+        text = format_year_class_option(("2025/2026", None))
+        assert text == "2025/2026 - All classes"
+
+    @pytest.mark.unit
+    def test_format_game_selector_label_uses_bullets(self):
+        text = format_game_selector_label("2025/2026 - T4", "TXA", "Sample Zero Sum")
+        assert text == "2025/2026 - T4 • TXA • Sample Zero Sum"
+
+    @pytest.mark.unit
+    def test_format_game_selector_label_normalizes_legacy_sentinel(self):
+        text = format_game_selector_label("2049", "_", "join")
+        assert text == "2049 • All classes • join"
 
 
 class TestSimulationProgressHelpers:

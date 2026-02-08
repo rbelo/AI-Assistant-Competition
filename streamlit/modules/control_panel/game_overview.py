@@ -1,5 +1,6 @@
 import streamlit as st
 
+from ..control_panel_ui_helpers import format_game_selector_label
 from ..database_handler import fetch_games_data
 from .game_overview_results import render_results_tab
 from .game_overview_setup import render_setup_tab
@@ -38,7 +39,7 @@ def render_game_overview_tab() -> None:
         return
 
     game_labels = [
-        f"{game['game_academic_year']}{'' if game['game_class'] == '_' else (' - ' + game['game_class'])} • {game['game_name']}"
+        format_game_selector_label(game["game_academic_year"], game["game_class"], game["game_name"])
         for game in games_for_selected_year
     ]
     game_id_by_label = {label: game["game_id"] for label, game in zip(game_labels, games_for_selected_year)}

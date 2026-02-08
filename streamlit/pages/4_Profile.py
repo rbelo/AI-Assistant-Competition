@@ -275,7 +275,7 @@ if st.session_state.get("authenticated", False):
             if games != []:
 
                 game_names_with_classes = [
-                    f"{game['game_name']}{'' if game['game_class'] == '_' else (' - Class ' + game['game_class'])}"
+                    f"{game['game_name']}{'' if not game['game_class'] else (' - Class ' + game['game_class'])}"
                     for game in games
                 ]
 

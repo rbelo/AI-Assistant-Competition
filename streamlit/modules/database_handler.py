@@ -12,6 +12,7 @@ app = Flask(__name__)
 app.secret_key = "key"
 logger = logging.getLogger(__name__)
 _LEGACY_NO_DEAL_NORMALIZED = False
+_COHORT_SCHEMA_NORMALIZED = False
 
 
 def _normalize_legacy_no_deal_sentinels(cur):
@@ -68,6 +69,92 @@ def _normalize_legacy_no_deal_sentinels(cur):
     _LEGACY_NO_DEAL_NORMALIZED = True
 
 
+def _normalize_game_class_value(game_class):
+    """Normalize legacy class sentinels to nullable semantics."""
+    if game_class is None:
+        return None
+    class_text = str(game_class).strip()
+    if class_text in {"", "_"}:
+        return None
+    return class_text
+
+
+def _normalize_cohort_schema(conn):
+    """Run idempotent schema normalization for academic year/class semantics."""
+    global _COHORT_SCHEMA_NORMALIZED
+    if _COHORT_SCHEMA_NORMALIZED:
+        return
+
+    with conn.cursor() as cur:
+        cur.execute("""
+            SELECT to_regclass('public.user_') IS NOT NULL,
+                   to_regclass('public.game') IS NOT NULL,
+                   to_regclass('public.round') IS NOT NULL,
+                   to_regclass('public.negotiation_chat') IS NOT NULL;
+        """)
+        user_exists, game_exists, round_exists, chat_exists = cur.fetchone()
+
+        if user_exists:
+            cur.execute("""
+                ALTER TABLE user_
+                ALTER COLUMN academic_year TYPE VARCHAR(20)
+                USING academic_year::text;
+            """)
+            cur.execute("""
+                ALTER TABLE user_
+                ALTER COLUMN class TYPE VARCHAR(20)
+                USING class::text;
+            """)
+
+        if game_exists:
+            cur.execute("""
+                ALTER TABLE game
+                ALTER COLUMN game_academic_year TYPE VARCHAR(20)
+                USING game_academic_year::text;
+            """)
+            cur.execute("""
+                ALTER TABLE game
+                ALTER COLUMN game_class DROP NOT NULL;
+            """)
+            cur.execute("""
+                ALTER TABLE game
+                ALTER COLUMN game_class TYPE VARCHAR(20)
+                USING NULLIF(TRIM(game_class::text), '_');
+            """)
+            cur.execute("""
+                UPDATE game
+                SET game_class = NULL
+                WHERE game_class IS NOT NULL AND TRIM(game_class) = '';
+            """)
+
+        if round_exists:
+            cur.execute("""
+                ALTER TABLE round
+                ALTER COLUMN group1_class TYPE VARCHAR(20)
+                USING group1_class::text;
+            """)
+            cur.execute("""
+                ALTER TABLE round
+                ALTER COLUMN group2_class TYPE VARCHAR(20)
+                USING group2_class::text;
+            """)
+
+        if chat_exists:
+            cur.execute("""
+                ALTER TABLE negotiation_chat
+                ALTER COLUMN group1_class TYPE VARCHAR(20)
+                USING group1_class::text;
+            """)
+            cur.execute("""
+                ALTER TABLE negotiation_chat
+                ALTER COLUMN group2_class TYPE VARCHAR(20)
+                USING group2_class::text;
+            """)
+
+    conn.commit()
+    _COHORT_SCHEMA_NORMALIZED = True
+
+
 # Helper to get the database connection string at runtime
 def get_db_connection_string():
     env_url = os.getenv("DATABASE_URL")
@@ -118,6 +205,16 @@ def get_connection():
     This function is the single point to mock in tests.
     """
     try:
+
+        def _try_normalize_schema(connection):
+            if not connection:
+                return
+            try:
+                _normalize_cohort_schema(connection)
+            except Exception:
+                logger.exception("Cohort schema normalization failed")
+                connection.rollback()
+
         # Try to use cached connection
         conn = _get_cached_connection()
         # Verify connection is still alive
@@ -125,23 +222,39 @@ def get_connection():
             try:
                 with conn.cursor() as cur:
                     cur.execute("SELECT 1")
+                _try_normalize_schema(conn)
                 return conn
             except (psycopg2.OperationalError, psycopg2.InterfaceError):
                 # Connection died, clear cache and get new one
                 if hasattr(st, "cache_resource"):
                     st.cache_resource.clear()
-                return _get_cached_connection()
+                fresh_conn = _get_cached_connection()
+                if fresh_conn:
+                    _try_normalize_schema(fresh_conn)
+                return fresh_conn
 
         # Force a reconnection when cached connection exists but is closed
         if conn and conn.closed and hasattr(st, "cache_resource"):
             st.cache_resource.clear()
-            return _get_cached_connection()
+            fresh_conn = _get_cached_connection()
+            if fresh_conn:
+                _try_normalize_schema(fresh_conn)
+            return fresh_conn
 
+        if conn:
+            _try_normalize_schema(conn)
         return conn
     except Exception:
         # Fallback for non-Streamlit context (tests, scripts)
         url = get_db_connection_string()
-        return psycopg2.connect(url) if url else None
+        fallback_conn = psycopg2.connect(url) if url else None
+        if fallback_conn:
+            try:
+                _normalize_cohort_schema(fallback_conn)
+            except Exception:
+                logger.exception("Cohort schema normalization failed")
+                fallback_conn.rollback()
+        return fallback_conn
 
 
 # Function to populate the 'plays' table with students who match the academic year and class of the created game
@@ -151,7 +264,8 @@ def populate_plays_table(game_id, game_academic_year, game_class):
         return False
     try:
         with conn.cursor() as cur:
-            if game_class == "_":
+            normalized_game_class = _normalize_game_class_value(game_class)
+            if normalized_game_class is None:
                 query = """
                 SELECT u.user_id
                 FROM user_ AS u LEFT JOIN instructor AS i
@@ -168,7 +282,7 @@ def populate_plays_table(game_id, game_academic_year, game_class):
                     ON u.user_id = i.user_id
                 WHERE i.user_id IS NULL AND u.academic_year = %(param1)s AND u.class = %(param2)s;
             """
-                cur.execute(query, {"param1": game_academic_year, "param2": game_class})
+                cur.execute(query, {"param1": game_academic_year, "param2": normalized_game_class})
 
             students = cur.fetchall()
 
@@ -184,7 +298,7 @@ def populate_plays_table(game_id, game_academic_year, game_class):
                     "No students found for game %s (year=%s, class=%s)",
                     game_id,
                     game_academic_year,
-                    game_class,
+                    normalized_game_class,
                 )
                 conn.commit()
                 return False
@@ -485,6 +599,8 @@ def update_game_in_db(
         return False
     try:
         with conn.cursor() as cur:
+            normalized_game_class = _normalize_game_class_value(game_class)
+            normalized_academic_year = str(game_academic_year).strip()
 
             query1 = """
                 UPDATE game
@@ -501,8 +617,8 @@ def update_game_in_db(
                     "param2": game_name,
                     "param3": number_of_rounds,
                     "param4": name_roles,
-                    "param5": game_academic_year,
-                    "param6": game_class,
+                    "param5": normalized_academic_year,
+                    "param6": normalized_game_class,
                     "param7": password,
                     "param8": timestamp_game_creation,
                     "param9": submission_deadline,
@@ -580,6 +696,8 @@ def store_game_in_db(
         return False
     try:
         with conn.cursor() as cur:
+            normalized_game_class = _normalize_game_class_value(game_class)
+            normalized_academic_year = str(game_academic_year).strip()
             # First, get the mode_id for the game type
             query_mode = """
                 SELECT mode_id FROM game_modes WHERE mode_name = %(mode)s;
@@ -617,8 +735,8 @@ def store_game_in_db(
                     "param4": game_name,
                     "param5": number_of_rounds,
                     "param6": name_roles,
-                    "param7": game_academic_year,
-                    "param8": game_class,
+                    "param7": normalized_academic_year,
+                    "param8": normalized_game_class,
                     "param9": password,
                     "param10": timestamp_game_creation,
                     "param11": submission_deadline,
@@ -774,6 +892,8 @@ def insert_student_data(user_id, email, temp_password, group_id, academic_year, 
         return False
     try:
         with conn.cursor() as cur:
+            normalized_academic_year = str(academic_year).strip()
+            normalized_class = str(class_).strip()
 
             print(
                 f"User ID: {user_id}, Email: {email}, Temp Password: {temp_password}, Group ID: {group_id}, Academic Year: {academic_year}, Class: {class_}"
@@ -802,8 +922,8 @@ def insert_student_data(user_id, email, temp_password, group_id, academic_year, 
                     "param2": email,
                     "param3": temp_password,
                     "param4": group_id,
-                    "param5": academic_year,
-                    "param6": class_,
+                    "param5": normalized_academic_year,
+                    "param6": normalized_class,
                 },
             )
 

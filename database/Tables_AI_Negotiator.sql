@@ -21,8 +21,8 @@ CREATE TABLE user_ (
     email VARCHAR(100) NOT NULL,                                          -- Unique email address, cannot be null
     password VARCHAR(100) NOT NULL,                                       -- Hashed password for secure login, cannot be null
     group_id SMALLINT NOT NULL,                                           -- The groupID of the student, cannot be null
-    academic_year SMALLINT NOT NULL,                                      -- Academic year of the user, cannot be null
-    class CHAR(1) NOT NULL,                                               -- Represents the class of the user, such as 'A' or 'B', cannot be null
+    academic_year VARCHAR(20) NOT NULL,                                   -- Academic year/cohort label (e.g., 2025/2026 - T4), cannot be null
+    class VARCHAR(20) NOT NULL,                                           -- Class label (e.g., A, TXA, SectionB), cannot be null
     timestamp_user TIMESTAMP DEFAULT CURRENT_TIMESTAMP,                   -- Timestamp of account creation, defaults to the current time
     PRIMARY KEY(user_id),                                                 -- Set username as the primary key
     UNIQUE(email)                                                         -- Enforce unique constraint on email
@@ -57,8 +57,8 @@ CREATE TABLE game (
     game_name VARCHAR(100) NOT NULL,                                      -- Name of the game, cannot be null
     number_of_rounds SMALLINT NOT NULL,                                   -- Number of rounds in the game, cannot be null
     name_roles VARCHAR(50) NOT NULL,                                      -- Names of the roles in the game, cannot be null
-    game_academic_year SMALLINT NOT NULL,                                 -- Academic year related to the game, cannot be null
-    game_class CHAR(1) NOT NULL,                                          -- Represents the class related to the game, such as 'A', 'B' or '_' (case where I want to consider all the classes in a certain academic year), cannot be null
+    game_academic_year VARCHAR(20) NOT NULL,                              -- Academic year related to the game, cannot be null
+    game_class VARCHAR(20),                                               -- Class related to the game; NULL means all classes in the selected academic year
     password VARCHAR(100) NOT NULL,                                       -- Hashed password to enter the game, cannot be null 
     timestamp_game_creation TIMESTAMP DEFAULT CURRENT_TIMESTAMP,          -- Timestamp of game creation, defaults to the current time
     timestamp_submission_deadline TIMESTAMP DEFAULT CURRENT_TIMESTAMP,    -- Timestamp of the submission deadline, defaults to the current time
@@ -92,9 +92,9 @@ CREATE TABLE plays (
 CREATE TABLE round (
     game_id SERIAL,                                                       -- Foreign key linking to the game_id in the game table
     round_number SMALLINT NOT NULL,                                       -- Number of the round in the game, cannot be null
-    group1_class CHAR(1) NOT NULL, 					                      -- Class of the first group participating in the round, cannot be null
+    group1_class VARCHAR(20) NOT NULL, 					                  -- Class of the first group participating in the round, cannot be null
     group1_id SMALLINT NOT NULL,                                          -- ID of the first group participating in the round, cannot be null
-    group2_class CHAR(1) NOT NULL,                                        -- Class of the second group participating in the round, cannot be null
+    group2_class VARCHAR(20) NOT NULL,                                    -- Class of the second group participating in the round, cannot be null
     group2_id SMALLINT NOT NULL,                                          -- ID of the second group participating in the round, cannot be null
     score_team1_role1 FLOAT,                                              -- Score of team 1 in a specific round with role1
     score_team2_role2 FLOAT,                                              -- Score of team 2 in a specific round with role2
@@ -108,9 +108,9 @@ CREATE TABLE round (
 CREATE TABLE negotiation_chat (
     game_id INT NOT NULL,
     round_number SMALLINT NOT NULL,
-    group1_class CHAR(1) NOT NULL,
+    group1_class VARCHAR(20) NOT NULL,
     group1_id SMALLINT NOT NULL,
-    group2_class CHAR(1) NOT NULL,
+    group2_class VARCHAR(20) NOT NULL,
     group2_id SMALLINT NOT NULL,
     transcript TEXT NOT NULL,
     summary TEXT,
