@@ -57,7 +57,7 @@ def render_student_management_tab():
 
         st.dataframe(
             filtered_students[["User ID", "Email", "Group ID", "Academic Year", "Class", "Created at"]],
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             height=min(42 + 35 * max(len(filtered_students), 1), 420),
         )
@@ -93,8 +93,11 @@ def render_student_management_tab():
                     success, message = process_student_csv(uploaded_file)
                     if success:
                         st.session_state.cc_student_import_message = ("success", message)
+                        st.session_state.cc_add_students = False
+                        st.session_state.pop("cc_upload_csv", None)
                     else:
                         st.session_state.cc_student_import_message = ("error", message)
+                    st.rerun()
                 else:
                     st.session_state.cc_student_import_message = ("error", "Please upload a valid CSV file.")
                     st.session_state.cc_add_students = False
