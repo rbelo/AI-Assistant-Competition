@@ -123,3 +123,4 @@ Common environment variables:
 - For same-day fixes, increment `N` (`.1`, `.2`, ...).
 - On a new date, reset to `.0`.
 - Keep the displayed app version and release tag aligned.
+- Before creating any commit, ask the user whether they want to update the app version.
