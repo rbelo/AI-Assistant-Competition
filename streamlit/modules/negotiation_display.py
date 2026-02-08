@@ -32,9 +32,10 @@ def render_chat_summary(
         st.info("No deal value could be parsed for scoring.")
     elif deal_value == -1 or score_role1 in (None, -1) or score_role2 in (None, -1):
         st.info("No valid agreement detected.")
-        col1, col2 = st.columns(2)
-        col1.metric(f"{role1_label} Score", "0.0")
-        col2.metric(f"{role2_label} Score", "0.0")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Agreed Value", "None")
+        col2.metric(f"{role1_label} Score", "0.0")
+        col3.metric(f"{role2_label} Score", "0.0")
     else:
         col1, col2, col3 = st.columns(3)
         col1.metric("Agreed Value", f"{deal_value:.2f}")
