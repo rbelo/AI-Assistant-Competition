@@ -157,3 +157,66 @@ def is_invalid_api_key_error(error):
         or "authentication" in message
         or "401" in message
     )
+
+
+# ---------------------------------------------------------------------------
+# Prisoner's Dilemma helpers
+# ---------------------------------------------------------------------------
+
+PD_DECISION_KEYWORD = "FINAL_DECISION:"
+PD_ACTIONS = frozenset({"cooperate", "defect"})
+
+DEFAULT_PD_PAYOFF_MATRIX = {
+    "cooperate_cooperate": [3, 3],
+    "cooperate_defect": [0, 5],
+    "defect_cooperate": [5, 0],
+    "defect_defect": [1, 1],
+}
+
+
+def compute_pd_scores(action_a, action_b, payoff_matrix):
+    """Look up payoffs from the matrix given both players' actions.
+
+    *payoff_matrix* maps ``"<action_a>_<action_b>"`` to ``[score_a, score_b]``.
+    Returns ``(score_a, score_b)`` or ``(0, 0)`` for invalid / unparseable actions.
+    """
+    if action_a not in PD_ACTIONS or action_b not in PD_ACTIONS:
+        return 0, 0
+    key = f"{action_a}_{action_b}"
+    payoffs = payoff_matrix.get(key)
+    if payoffs is None:
+        return 0, 0
+    return payoffs[0], payoffs[1]
+
+
+def parse_pd_action(text):
+    """Extract ``'cooperate'`` or ``'defect'`` from an agent's private decision.
+
+    Looks first for the ``FINAL_DECISION:`` keyword, then falls back to the
+    last occurrence of either action word in the text.  Returns *None* when
+    neither action can be identified.
+    """
+    if not text:
+        return None
+
+    text_lower = text.lower()
+    keyword = PD_DECISION_KEYWORD.lower()
+
+    # Primary: look for the explicit keyword
+    if keyword in text_lower:
+        after = text_lower.split(keyword, 1)[1].strip()
+        if after.startswith("cooperate"):
+            return "cooperate"
+        if after.startswith("defect"):
+            return "defect"
+
+    # Fallback: last occurrence of either action word
+    last_action = None
+    last_pos = -1
+    for action in ("cooperate", "defect"):
+        pos = text_lower.rfind(action)
+        if pos > last_pos:
+            last_pos = pos
+            last_action = action
+
+    return last_action
