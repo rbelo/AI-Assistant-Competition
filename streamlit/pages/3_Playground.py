@@ -30,12 +30,12 @@ try:
         list_user_api_keys,
     )
     from modules.llm_models import MODEL_EXPLANATIONS, MODEL_OPTIONS
+    from modules.negotiation_display import render_chat_summary
     from modules.negotiations_common import (
         build_llm_config,
         compute_deal_scores,
         is_invalid_api_key_error,
     )
-    from modules.negotiation_display import render_chat_summary
     from modules.negotiations_summary import build_summary_agent, evaluate_deal_summary
 except Exception as exc:
     st.title("AI Agent Playground")
@@ -90,7 +90,9 @@ def run_playground_negotiation(
     initiator = role2_agent if conversation_starter == role2_name else role1_agent
     responder = role1_agent if initiator is role2_agent else role2_agent
 
-    termination_fn = lambda msg, history: negotiation_termination_message in msg["content"]
+    def termination_fn(msg, history):
+        return negotiation_termination_message in msg["content"]
+
     chat = engine.run_bilateral(initiator, responder, num_turns, termination_fn)
 
     # Process chat history for display
@@ -153,62 +155,63 @@ with tab1:
     st.header("Create New Test Negotiation")
     model_options = MODEL_OPTIONS
     model_explanations = MODEL_EXPLANATIONS
-    with st.form(key="playground_form"):
-        col1, col2 = st.columns(2)
+    col1, col2 = st.columns(2)
 
-        with col1:
-            role1_name = st.text_input("Role 1 Name", value="Buyer")
-            role1_value = st.number_input("Role 1 Reservation Value", value=20)
-            role1_prompt = st.text_area(
-                "Role 1 Prompt",
-                height=200,
-                value=f"You are a buyer negotiating to purchase an item. Your reservation value is {role1_value}, which means you won't pay more than this amount. Try to negotiate the lowest price possible.",
-            )
-
-        with col2:
-            role2_name = st.text_input("Role 2 Name", value="Seller")
-            role2_value = st.number_input("Role 2 Reservation Value", value=10)
-            role2_prompt = st.text_area(
-                "Role 2 Prompt",
-                height=200,
-                value=f"You are a seller negotiating to sell an item. Your reservation value is {role2_value}, which means you won't accept less than this amount. Try to negotiate the highest price possible.",
-            )
-
-        st.subheader("Negotiation Settings")
-        conversation_options = [f"{role1_name} ➡ {role2_name}", f"{role2_name} ➡ {role1_name}"]
-        conversation_starter = st.radio(
-            "Conversation Starter",
-            conversation_options,
-            horizontal=True,
-            index=0,
-            key="playground_conversation_starter",
+    with col1:
+        role1_name = st.text_input("Role 1 Name", value="Buyer")
+        role1_value = st.number_input("Role 1 Reservation Value", value=20)
+        role1_prompt = st.text_area(
+            "Role 1 Prompt",
+            height=200,
+            value=f"You are a buyer negotiating to purchase an item. Your reservation value is {role1_value}, which means you won't pay more than this amount. Try to negotiate the lowest price possible.",
         )
-        num_turns = st.slider("Maximum Turns", min_value=5, max_value=30, value=15)
-        st.subheader("Run Configuration")
-        model = st.selectbox(
-            "Model",
-            options=model_options,
-            index=0,
-            format_func=lambda name: f"{name} — {model_explanations.get(name, '')}",
-            help="Model descriptions are shown in the dropdown. Pick the best balance of cost and quality.",
-            key="playground_model",
-        )
-        saved_keys = list_user_api_keys(user_id)
-        key_options = {key["key_name"]: key["key_id"] for key in saved_keys}
-        has_keys = bool(key_options)
-        selected_key_id = None
-        if has_keys:
-            selected_label = st.selectbox(
-                "API Key",
-                options=list(key_options.keys()),
-                key="playground_api_key_select",
-            )
-            selected_key_id = key_options[selected_label]
-        else:
-            st.info("No API keys saved. Add one in Profile to run a playground test.")
-        save_results = st.checkbox("Save Results", value=True)
 
-        submit_button = st.form_submit_button("Run Test Negotiation", disabled=not has_keys)
+    with col2:
+        role2_name = st.text_input("Role 2 Name", value="Seller")
+        role2_value = st.number_input("Role 2 Reservation Value", value=10)
+        role2_prompt = st.text_area(
+            "Role 2 Prompt",
+            height=200,
+            value=f"You are a seller negotiating to sell an item. Your reservation value is {role2_value}, which means you won't accept less than this amount. Try to negotiate the highest price possible.",
+        )
+
+    st.subheader("Negotiation Settings")
+    conversation_options = [f"{role1_name} ➡ {role2_name}", f"{role2_name} ➡ {role1_name}"]
+    current_starter = st.session_state.get("playground_conversation_starter")
+    if current_starter not in conversation_options:
+        st.session_state["playground_conversation_starter"] = conversation_options[0]
+    conversation_starter = st.radio(
+        "Conversation Starter",
+        conversation_options,
+        horizontal=True,
+        key="playground_conversation_starter",
+    )
+    num_turns = st.slider("Maximum Turns", min_value=5, max_value=30, value=15)
+    st.subheader("Run Configuration")
+    model = st.selectbox(
+        "Model",
+        options=model_options,
+        index=0,
+        format_func=lambda name: f"{name} — {model_explanations.get(name, '')}",
+        help="Model descriptions are shown in the dropdown. Pick the best balance of cost and quality.",
+        key="playground_model",
+    )
+    saved_keys = list_user_api_keys(user_id)
+    key_options = {key["key_name"]: key["key_id"] for key in saved_keys}
+    has_keys = bool(key_options)
+    selected_key_id = None
+    if has_keys:
+        selected_label = st.selectbox(
+            "API Key",
+            options=list(key_options.keys()),
+            key="playground_api_key_select",
+        )
+        selected_key_id = key_options[selected_label]
+    else:
+        st.info("No API keys saved. Add one in Profile to run a playground test.")
+    save_results = st.checkbox("Save Results", value=True)
+
+    submit_button = st.button("Run Test Negotiation", disabled=not has_keys, key="playground_run_test")
 
     if submit_button:
         resolved_api_key = None
