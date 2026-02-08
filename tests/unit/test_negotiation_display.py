@@ -38,9 +38,9 @@ class TestRenderChatSummary:
 
         nd.render_chat_summary(
             summary_text="Some summary",
-            deal_value=-1,
-            score_role1=-1,
-            score_role2=-1,
+            deal_value=None,
+            score_role1=0,
+            score_role2=0,
             role1_label="Buyer",
             role2_label="Seller",
             transcript="chat",
@@ -52,7 +52,7 @@ class TestRenderChatSummary:
         assert columns[2].metrics == [("Seller Score", "0.0")]
 
     @pytest.mark.unit
-    def test_none_deal_value_keeps_unparsed_message(self, monkeypatch):
+    def test_none_deal_value_shows_no_agreement_message(self, monkeypatch):
         infos = []
 
         monkeypatch.setattr(nd.st, "subheader", lambda *_args, **_kwargs: None)
@@ -73,7 +73,7 @@ class TestRenderChatSummary:
             transcript="chat",
         )
 
-        assert "No deal value could be parsed for scoring." in infos
+        assert "No valid agreement detected." in infos
 
     @pytest.mark.unit
     def test_valid_deal_value_displays_numeric_metric(self, monkeypatch):

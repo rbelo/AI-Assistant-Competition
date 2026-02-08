@@ -121,7 +121,7 @@ def create_chat(
         negotiation += f"{entry['name']}: {clean_msg}\n\n\n"
 
     summary_text = ""
-    deal_value = -1
+    deal_value = None
     summary_elapsed = 0.0
     if summary_agent:
         summary_start = time.perf_counter()

@@ -36,22 +36,28 @@ def _extract_summary_text(summary_eval, summary_agent_name):
 
 def parse_deal_value(summary_text, summary_termination_message):
     if not summary_text or not summary_termination_message:
-        return -1
+        return None
 
     for line in summary_text.splitlines():
         stripped = line.strip()
         if summary_termination_message in stripped:
             value_str = stripped.split(summary_termination_message, 1)[1].strip()
+            if value_str.lower().startswith("none"):
+                return None
             value_str = value_str.replace("$", "").replace(",", "")
             match = re.findall(r"-?\d+(?:[.,]\d+)?", value_str)
             if not match:
-                return -1
+                return None
             try:
-                return float(match[0].replace(",", "."))
+                parsed = float(match[0].replace(",", "."))
+                # Backward compatibility: legacy no-deal marker was -1.
+                if parsed == -1.0:
+                    return None
+                return parsed
             except Exception:
-                return -1
+                return None
 
-    return -1
+    return None
 
 
 def evaluate_deal_summary(
@@ -65,7 +71,7 @@ def evaluate_deal_summary(
     history_size=4,
 ):
     if not summary_agent or not engine:
-        return "", -1
+        return "", None
 
     summary_context = _build_summary_context(chat_history, role1_name, role2_name, history_size)
     summary_text = engine.single_decision(summary_agent, summary_context + (summary_prompt or ""))
@@ -74,15 +80,15 @@ def evaluate_deal_summary(
 
 def extract_summary_from_transcript(transcript, summary_termination_message):
     if not transcript:
-        return "", -1
+        return "", None
 
     parts = [part.strip() for part in transcript.split("\n\n\n") if part.strip()]
     if not parts:
-        return "", -1
+        return "", None
 
     summary_text = parts[-1]
     if summary_termination_message and summary_termination_message not in summary_text:
-        return "", -1
+        return "", None
 
     return summary_text, parse_deal_value(summary_text, summary_termination_message)
 
@@ -113,7 +119,7 @@ To determine if there is a valid agreement:
 
 Your response format:
 {summary_prefix}- If there is a valid agreement: '{summary_termination_message} [agreed_value]'
-- If there is no valid agreement: '{summary_termination_message} -1'
+- If there is no valid agreement: '{summary_termination_message} None'
 
 Be thorough in your analysis and only report an agreement if ALL conditions are met.""",
     )

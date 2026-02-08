@@ -49,11 +49,11 @@ def test_fetch_and_compute_scores_for_year_formats_results():
     ]
 
     query = cursor.execute.call_args[0][0]
-    assert "CASE WHEN r.score_team1_role1 = -1 THEN 0 ELSE r.score_team1_role1 END" in query
-    assert "CASE WHEN r.score_team1_role2 = -1 THEN 0 ELSE r.score_team1_role2 END" in query
-    assert "CASE WHEN r.score_team2_role1 = -1 THEN 0 ELSE r.score_team2_role1 END" in query
-    assert "CASE WHEN r.score_team2_role2 = -1 THEN 0 ELSE r.score_team2_role2 END" in query
-    assert "IS NULL" not in query
+    assert "r.score_team1_role1 AS score_role1" in query
+    assert "r.score_team1_role2 AS score_role2" in query
+    assert "r.score_team2_role1 AS score_role1" in query
+    assert "r.score_team2_role2 AS score_role2" in query
+    assert "CASE WHEN r.score_team1_role1 = -1" not in query
 
 
 @pytest.mark.unit
@@ -85,11 +85,11 @@ def test_fetch_and_compute_scores_for_year_game_formats_results():
     ]
 
     query = cursor.execute.call_args[0][0]
-    assert "CASE WHEN r.score_team1_role1 = -1 THEN 0 ELSE r.score_team1_role1 END" in query
-    assert "CASE WHEN r.score_team1_role2 = -1 THEN 0 ELSE r.score_team1_role2 END" in query
-    assert "CASE WHEN r.score_team2_role1 = -1 THEN 0 ELSE r.score_team2_role1 END" in query
-    assert "CASE WHEN r.score_team2_role2 = -1 THEN 0 ELSE r.score_team2_role2 END" in query
-    assert "IS NULL" not in query
+    assert "r.score_team1_role1 AS score_role1" in query
+    assert "r.score_team1_role2 AS score_role2" in query
+    assert "r.score_team2_role1 AS score_role1" in query
+    assert "r.score_team2_role2 AS score_role2" in query
+    assert "CASE WHEN r.score_team1_role1 = -1" not in query
 
 
 @pytest.mark.unit

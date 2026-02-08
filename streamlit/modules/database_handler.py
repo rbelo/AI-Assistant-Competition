@@ -11,6 +11,61 @@ import streamlit as st
 app = Flask(__name__)
 app.secret_key = "key"
 logger = logging.getLogger(__name__)
+_LEGACY_NO_DEAL_NORMALIZED = False
+
+
+def _normalize_legacy_no_deal_sentinels(cur):
+    """Backfill legacy -1 sentinels to current None/0 semantics.
+
+    This is safe to run repeatedly; it becomes a no-op after first successful run
+    in the current process.
+    """
+    global _LEGACY_NO_DEAL_NORMALIZED
+    if _LEGACY_NO_DEAL_NORMALIZED:
+        return
+
+    def _column_exists(table_name, column_name):
+        try:
+            cur.execute(
+                """
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = %(table_name)s AND column_name = %(column_name)s
+                );
+            """,
+                {"table_name": table_name, "column_name": column_name},
+            )
+            row = cur.fetchone()
+            return bool(row and isinstance(row, (tuple, list)) and row[0])
+        except Exception:
+            return False
+
+    # negotiation_chat.deal_value: -1 => NULL
+    if _column_exists("negotiation_chat", "deal_value"):
+        cur.execute("""
+            UPDATE negotiation_chat
+            SET deal_value = NULL
+            WHERE deal_value = -1;
+        """)
+
+    # playground_result.deal_value: -1 => NULL (table may not exist yet in some envs)
+    if _column_exists("playground_result", "deal_value"):
+        cur.execute("""
+            UPDATE playground_result
+            SET deal_value = NULL
+            WHERE deal_value = -1;
+        """)
+
+    # round scores: -1 => 0 (attempted with no agreement)
+    for column in ("score_team1_role1", "score_team2_role2", "score_team1_role2", "score_team2_role1"):
+        if _column_exists("round", column):
+            cur.execute(f"""
+                UPDATE round
+                SET {column} = 0
+                WHERE {column} = -1;
+            """)
+
+    _LEGACY_NO_DEAL_NORMALIZED = True
 
 
 # Helper to get the database connection string at runtime
@@ -815,6 +870,7 @@ def get_round_data(game_id):
         return False
     try:
         with conn.cursor() as cur:
+            _normalize_legacy_no_deal_sentinels(cur)
 
             query = """SELECT round_number, group1_class, group1_id, group2_class, group2_id, score_team1_role1, score_team2_role2, score_team1_role2, score_team2_role1
                        FROM round WHERE game_id=%(param1)s;"""
@@ -941,6 +997,7 @@ def get_negotiation_chat_details(game_id, round_number, group1_class, group1_id,
         return None
     try:
         with conn.cursor() as cur:
+            _normalize_legacy_no_deal_sentinels(cur)
             cur.execute("""
                 SELECT column_name
                 FROM information_schema.columns
@@ -1256,6 +1313,7 @@ def get_playground_results(user_id, class_, group_id, limit=20):
         return []
     try:
         with conn.cursor() as cur:
+            _normalize_legacy_no_deal_sentinels(cur)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS playground_result (
                     id SERIAL PRIMARY KEY,
@@ -2057,6 +2115,7 @@ def fetch_and_compute_scores_for_year(selected_year, student=False):
         return False
     try:
         with conn.cursor() as cur:
+            _normalize_legacy_no_deal_sentinels(cur)
 
             # SQL Query to compute the leaderboard
             query = """
@@ -2066,10 +2125,9 @@ def fetch_and_compute_scores_for_year(selected_year, student=False):
                         r.round_number,
                         r.group1_class AS team_class,
                         r.group1_id AS team_id,
-                        ((CASE WHEN r.score_team1_role1 = -1 THEN 0 ELSE r.score_team1_role1 END +
-                          CASE WHEN r.score_team1_role2 = -1 THEN 0 ELSE r.score_team1_role2 END) / 2) AS score_team,
-                        CASE WHEN r.score_team1_role1 = -1 THEN 0 ELSE r.score_team1_role1 END AS score_role1,
-                        CASE WHEN r.score_team1_role2 = -1 THEN 0 ELSE r.score_team1_role2 END AS score_role2
+                        ((r.score_team1_role1 + r.score_team1_role2) / 2) AS score_team,
+                        r.score_team1_role1 AS score_role1,
+                        r.score_team1_role2 AS score_role2
                     FROM round AS r
                     JOIN game AS g ON r.game_id = g.game_id
                     WHERE g.game_academic_year = %(param1)s
@@ -2082,10 +2140,9 @@ def fetch_and_compute_scores_for_year(selected_year, student=False):
                         r.round_number,
                         r.group2_class AS team_class,
                         r.group2_id AS team_id,
-                        ((CASE WHEN r.score_team2_role1 = -1 THEN 0 ELSE r.score_team2_role1 END +
-                          CASE WHEN r.score_team2_role2 = -1 THEN 0 ELSE r.score_team2_role2 END) / 2) AS score_team,
-                        CASE WHEN r.score_team2_role1 = -1 THEN 0 ELSE r.score_team2_role1 END AS score_role1,
-                        CASE WHEN r.score_team2_role2 = -1 THEN 0 ELSE r.score_team2_role2 END AS score_role2
+                        ((r.score_team2_role1 + r.score_team2_role2) / 2) AS score_team,
+                        r.score_team2_role1 AS score_role1,
+                        r.score_team2_role2 AS score_role2
                     FROM round AS r
                     JOIN game AS g ON r.game_id = g.game_id
                     WHERE g.game_academic_year = %(param1)s
@@ -2208,6 +2265,7 @@ def fetch_and_compute_scores_for_year_game(game_id):
         return False
     try:
         with conn.cursor() as cur:
+            _normalize_legacy_no_deal_sentinels(cur)
 
             # SQL Query to compute the leaderboard
             query = """
@@ -2217,10 +2275,9 @@ def fetch_and_compute_scores_for_year_game(game_id):
                         r.round_number,
                         r.group1_class AS team_class,
                         r.group1_id AS team_id,
-                        ((CASE WHEN r.score_team1_role1 = -1 THEN 0 ELSE r.score_team1_role1 END +
-                          CASE WHEN r.score_team1_role2 = -1 THEN 0 ELSE r.score_team1_role2 END) / 2) AS score_team,
-                        CASE WHEN r.score_team1_role1 = -1 THEN 0 ELSE r.score_team1_role1 END AS score_role1,
-                        CASE WHEN r.score_team1_role2 = -1 THEN 0 ELSE r.score_team1_role2 END AS score_role2
+                        ((r.score_team1_role1 + r.score_team1_role2) / 2) AS score_team,
+                        r.score_team1_role1 AS score_role1,
+                        r.score_team1_role2 AS score_role2
                     FROM round AS r
                     WHERE r.game_id = %(param1)s
 
@@ -2231,10 +2288,9 @@ def fetch_and_compute_scores_for_year_game(game_id):
                         r.round_number,
                         r.group2_class AS team_class,
                         r.group2_id AS team_id,
-                        ((CASE WHEN r.score_team2_role1 = -1 THEN 0 ELSE r.score_team2_role1 END +
-                          CASE WHEN r.score_team2_role2 = -1 THEN 0 ELSE r.score_team2_role2 END) / 2) AS score_team,
-                        CASE WHEN r.score_team2_role1 = -1 THEN 0 ELSE r.score_team2_role1 END AS score_role1,
-                        CASE WHEN r.score_team2_role2 = -1 THEN 0 ELSE r.score_team2_role2 END AS score_role2
+                        ((r.score_team2_role1 + r.score_team2_role2) / 2) AS score_team,
+                        r.score_team2_role1 AS score_role1,
+                        r.score_team2_role2 AS score_role2
                     FROM round AS r
                     WHERE r.game_id = %(param1)s
                 ),

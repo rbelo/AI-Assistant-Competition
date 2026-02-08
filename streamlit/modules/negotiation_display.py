@@ -29,8 +29,6 @@ def render_chat_summary(
         st.info("Summary unavailable for this chat.")
 
     if deal_value is None:
-        st.info("No deal value could be parsed for scoring.")
-    elif deal_value == -1 or score_role1 in (None, -1) or score_role2 in (None, -1):
         st.info("No valid agreement detected.")
         col1, col2, col3 = st.columns(3)
         col1.metric("Agreed Value", "None")

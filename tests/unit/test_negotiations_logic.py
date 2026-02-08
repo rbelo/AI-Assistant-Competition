@@ -228,10 +228,10 @@ class TestExtractSummaryText:
 class TestParseDealValue:
     @pytest.mark.unit
     def test_empty_inputs(self):
-        assert parse_deal_value("", "DEAL:") == -1
-        assert parse_deal_value(None, "DEAL:") == -1
-        assert parse_deal_value("DEAL: 15", "") == -1
-        assert parse_deal_value("DEAL: 15", None) == -1
+        assert parse_deal_value("", "DEAL:") is None
+        assert parse_deal_value(None, "DEAL:") is None
+        assert parse_deal_value("DEAL: 15", "") is None
+        assert parse_deal_value("DEAL: 15", None) is None
 
     @pytest.mark.unit
     def test_simple_integer(self):
@@ -251,11 +251,11 @@ class TestParseDealValue:
 
     @pytest.mark.unit
     def test_negative_value(self):
-        assert parse_deal_value("DEAL: -1", "DEAL:") == -1.0
+        assert parse_deal_value("DEAL: -1", "DEAL:") is None
 
     @pytest.mark.unit
     def test_no_number_after_termination(self):
-        assert parse_deal_value("DEAL: no number", "DEAL:") == -1
+        assert parse_deal_value("DEAL: no number", "DEAL:") is None
 
     @pytest.mark.unit
     def test_multiline_finds_correct_line(self):
@@ -264,7 +264,7 @@ class TestParseDealValue:
 
     @pytest.mark.unit
     def test_termination_not_present(self):
-        assert parse_deal_value("No deal here", "DEAL:") == -1
+        assert parse_deal_value("No deal here", "DEAL:") is None
 
     @pytest.mark.unit
     def test_comma_stripped_before_parsing(self):
@@ -283,12 +283,12 @@ class TestParseDealValue:
 class TestExtractSummaryFromTranscript:
     @pytest.mark.unit
     def test_empty_transcript(self):
-        assert extract_summary_from_transcript("", "DEAL:") == ("", -1)
-        assert extract_summary_from_transcript(None, "DEAL:") == ("", -1)
+        assert extract_summary_from_transcript("", "DEAL:") == ("", None)
+        assert extract_summary_from_transcript(None, "DEAL:") == ("", None)
 
     @pytest.mark.unit
     def test_whitespace_only_transcript(self):
-        assert extract_summary_from_transcript("   \n\n\n   ", "DEAL:") == ("", -1)
+        assert extract_summary_from_transcript("   \n\n\n   ", "DEAL:") == ("", None)
 
     @pytest.mark.unit
     def test_extracts_last_part(self):
@@ -302,7 +302,7 @@ class TestExtractSummaryFromTranscript:
         transcript = "Buyer: Hello\n\n\nSeller: Goodbye"
         summary, value = extract_summary_from_transcript(transcript, "DEAL:")
         assert summary == ""
-        assert value == -1
+        assert value is None
 
     @pytest.mark.unit
     def test_none_termination_message(self):
@@ -310,8 +310,8 @@ class TestExtractSummaryFromTranscript:
         transcript = "Part1\n\n\nPart2"
         summary, value = extract_summary_from_transcript(transcript, None)
         assert summary == "Part2"
-        # parse_deal_value with None termination_message returns -1
-        assert value == -1
+        # parse_deal_value with None termination_message returns None
+        assert value is None
 
     @pytest.mark.unit
     def test_single_part_with_termination(self):

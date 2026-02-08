@@ -27,11 +27,9 @@ def parse_team_name(team_name):
     return class_part, group_part
 
 
-def compute_deal_scores(deal, maximizer_value, minimizer_value, precision=4):
+def compute_deal_scores(deal, maximizer_value, minimizer_value, precision=2):
     if deal is None:
         return 0, 0
-    if deal == -1:
-        return -1, -1
 
     if maximizer_value < minimizer_value:
         if deal < maximizer_value:
@@ -40,7 +38,7 @@ def compute_deal_scores(deal, maximizer_value, minimizer_value, precision=4):
             return 1, 0
         ratio = round((deal - maximizer_value) / (minimizer_value - maximizer_value), precision)
         ratio = max(0, min(1, ratio))
-        return ratio, 1 - ratio
+        return round(ratio, precision), round(1 - ratio, precision)
 
     if deal > maximizer_value:
         return 1, 0

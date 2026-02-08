@@ -207,4 +207,4 @@ class TestSummaryInjectionGuardrailRealAPI:
 
         assert isinstance(summary_text, str)
         assert summary_termination_message in summary_text
-        assert deal_value == -1
+        assert deal_value is None
