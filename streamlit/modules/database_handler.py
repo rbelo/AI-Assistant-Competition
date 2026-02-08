@@ -560,6 +560,129 @@ def fetch_games_data_by_user_id(user_id):
         return []
 
 
+def fetch_student_visible_games(user_id):
+    """Fetch published games where the student's team has round results."""
+    conn = get_connection()
+    if not conn:
+        return []
+    try:
+        with conn.cursor() as cur:
+            query = """
+                WITH team_info AS (
+                    SELECT u.class AS team_class, u.group_id AS team_id
+                    FROM user_ AS u
+                    WHERE u.user_id = %(param1)s
+                    LIMIT 1
+                )
+                SELECT
+                    g.game_id,
+                    g.game_name,
+                    g.name_roles,
+                    g.game_academic_year,
+                    g.game_class,
+                    g.available,
+                    g.timestamp_submission_deadline
+                FROM game AS g
+                JOIN round AS r ON r.game_id = g.game_id
+                JOIN team_info AS t
+                  ON (
+                        (r.group1_class = t.team_class AND r.group1_id = t.team_id)
+                        OR
+                        (r.group2_class = t.team_class AND r.group2_id = t.team_id)
+                     )
+                WHERE g.available = 1
+                GROUP BY
+                    g.game_id,
+                    g.game_name,
+                    g.name_roles,
+                    g.game_academic_year,
+                    g.game_class,
+                    g.available,
+                    g.timestamp_submission_deadline
+                ORDER BY g.game_id DESC;
+            """
+            cur.execute(query, {"param1": user_id})
+            rows = cur.fetchall()
+            return [
+                {
+                    "game_id": row[0],
+                    "game_name": row[1],
+                    "name_roles": row[2],
+                    "game_academic_year": row[3],
+                    "game_class": row[4],
+                    "available": row[5],
+                    "timestamp_submission_deadline": row[6],
+                }
+                for row in rows
+            ]
+    except Exception:
+        return []
+
+
+def fetch_game_ids_for_user(user_id, available_only=True):
+    """Fetch distinct game ids where the user's team appears in rounds."""
+    conn = get_connection()
+    if not conn:
+        return []
+    try:
+        with conn.cursor() as cur:
+            availability_filter = "AND g.available = 1" if available_only else ""
+            query = f"""
+                WITH team_info AS (
+                    SELECT u.class AS team_class, u.group_id AS team_id
+                    FROM user_ AS u
+                    WHERE u.user_id = %(param1)s
+                    LIMIT 1
+                )
+                SELECT DISTINCT g.game_id
+                FROM game AS g
+                JOIN round AS r ON r.game_id = g.game_id
+                JOIN team_info AS t
+                  ON (
+                        (r.group1_class = t.team_class AND r.group1_id = t.team_id)
+                        OR
+                        (r.group2_class = t.team_class AND r.group2_id = t.team_id)
+                     )
+                WHERE 1 = 1
+                  {availability_filter}
+                ORDER BY g.game_id DESC;
+            """
+            cur.execute(query, {"param1": user_id})
+            return [row[0] for row in cur.fetchall()]
+    except Exception:
+        return []
+
+
+def fetch_assigned_games_for_user(user_id, available_only=True):
+    """Fetch distinct game ids assigned in plays table (legacy helper)."""
+    conn = get_connection()
+    if not conn:
+        return []
+    try:
+        with conn.cursor() as cur:
+            if available_only:
+                query = """
+                    SELECT DISTINCT g.game_id
+                    FROM game AS g
+                    JOIN plays AS p ON g.game_id = p.game_id
+                    WHERE p.user_id = %(param1)s
+                      AND g.available = 1
+                    ORDER BY g.game_id DESC;
+                """
+            else:
+                query = """
+                    SELECT DISTINCT g.game_id
+                    FROM game AS g
+                    JOIN plays AS p ON g.game_id = p.game_id
+                    WHERE p.user_id = %(param1)s
+                    ORDER BY g.game_id DESC;
+                """
+            cur.execute(query, {"param1": user_id})
+            return [row[0] for row in cur.fetchall()]
+    except Exception:
+        return []
+
+
 # Function to retrieve the last gameID from the database and increment it
 def get_next_game_id():
     conn = get_connection()
@@ -2231,6 +2354,144 @@ def get_user_id_of_student(academic_year, class_, group_id):
 
     except Exception:
         return False
+
+
+def fetch_and_compute_scores_for_game_ids(game_ids, available_values=None):
+    """Compute leaderboard scores for a selected set of games."""
+    if not game_ids:
+        return []
+
+    conn = get_connection()
+    if not conn:
+        return []
+    try:
+        with conn.cursor() as cur:
+            _normalize_legacy_no_deal_sentinels(cur)
+
+            availability_filter = ""
+            params = {"game_ids": game_ids}
+            if available_values is not None:
+                availability_filter = "AND g.available IN %(available_values)s"
+                params["available_values"] = tuple(available_values)
+
+            query = f"""
+                WITH computed_scores_roles AS (
+                    SELECT
+                        r.game_id,
+                        r.round_number,
+                        r.group1_class AS team_class,
+                        r.group1_id AS team_id,
+                        ((r.score_team1_role1 + r.score_team1_role2) / 2) AS score_team,
+                        r.score_team1_role1 AS score_role1,
+                        r.score_team1_role2 AS score_role2
+                    FROM round AS r
+                    JOIN game AS g ON r.game_id = g.game_id
+                    WHERE r.game_id = ANY(%(game_ids)s)
+                      {availability_filter}
+
+                    UNION ALL
+
+                    SELECT
+                        r.game_id,
+                        r.round_number,
+                        r.group2_class AS team_class,
+                        r.group2_id AS team_id,
+                        ((r.score_team2_role1 + r.score_team2_role2) / 2) AS score_team,
+                        r.score_team2_role1 AS score_role1,
+                        r.score_team2_role2 AS score_role2
+                    FROM round AS r
+                    JOIN game AS g ON r.game_id = g.game_id
+                    WHERE r.game_id = ANY(%(game_ids)s)
+                      {availability_filter}
+                ),
+                leaderboard_all_games AS (
+                    SELECT
+                        team_class,
+                        team_id,
+                        AVG(score_team) * 100 AS average_score
+                    FROM computed_scores_roles
+                    GROUP BY team_class, team_id
+                ),
+                team_game_rounds AS (
+                    SELECT
+                        game_id,
+                        round_number,
+                        team_class,
+                        team_id
+                    FROM computed_scores_roles
+                ),
+                rounds_per_game AS (
+                    SELECT
+                        team_class,
+                        team_id,
+                        game_id,
+                        COUNT(DISTINCT round_number) AS rounds_in_game
+                    FROM team_game_rounds
+                    GROUP BY team_class, team_id, game_id
+                ),
+                games_summary AS (
+                    SELECT
+                        team_class,
+                        team_id,
+                        COUNT(DISTINCT game_id) AS total_games,
+                        AVG(rounds_in_game) AS avg_rounds_per_game
+                    FROM rounds_per_game
+                    GROUP BY team_class, team_id
+                ),
+                aggregated_scores_roles AS (
+                    SELECT
+                        team_class,
+                        team_id,
+                        AVG(score_role1) * 100 AS average_score_role1,
+                        AVG(score_role2) * 100 AS average_score_role2
+                    FROM computed_scores_roles
+                    GROUP BY team_class, team_id
+                ),
+                leaderboard_roles AS (
+                    SELECT
+                        team_class,
+                        team_id,
+                        RANK() OVER (ORDER BY average_score_role1 DESC) AS position_name_roles_1,
+                        average_score_role1 AS score_name_roles_1,
+                        RANK() OVER (ORDER BY average_score_role2 DESC) AS position_name_roles_2,
+                        average_score_role2 AS score_name_roles_2
+                    FROM aggregated_scores_roles
+                )
+                SELECT
+                    lyg.team_class,
+                    lyg.team_id,
+                    lyg.average_score AS team_average_score,
+                    gs.total_games,
+                    gs.avg_rounds_per_game,
+                    lr.position_name_roles_1,
+                    lr.score_name_roles_1,
+                    lr.position_name_roles_2,
+                    lr.score_name_roles_2
+                FROM leaderboard_all_games AS lyg
+                JOIN games_summary AS gs
+                  ON lyg.team_class = gs.team_class AND lyg.team_id = gs.team_id
+                JOIN leaderboard_roles AS lr
+                  ON lyg.team_class = lr.team_class AND lyg.team_id = lr.team_id
+                ORDER BY lyg.average_score DESC;
+            """
+            cur.execute(query, params)
+            leaderboard = cur.fetchall()
+            return [
+                {
+                    "team_class": row[0],
+                    "team_id": row[1],
+                    "average_score": row[2],
+                    "total_games": row[3],
+                    "avg_rounds_per_game": row[4],
+                    "position_name_roles_1": row[5],
+                    "score_name_roles_1": row[6],
+                    "position_name_roles_2": row[7],
+                    "score_name_roles_2": row[8],
+                }
+                for row in leaderboard
+            ]
+    except Exception:
+        return []
 
 
 # Function to get and compute leaderboard scores for a given academic year
